@@ -1,0 +1,61 @@
+<!-- Copyright (c) Microsoft Corporation and Contributors. -->
+<!-- Licensed under the MIT License. -->
+
+<Page
+    x:Class="PodMerForWinUi.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PodMerForWinUi"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    NavigationCacheMode="Required"
+    >
+
+    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
+            <RowDefinition Height="5*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="40"/>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
+        <StackPanel  Orientation="Horizontal" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" HorizontalAlignment="Right">
+            <winui:ProgressRing x:Name="update_loading_ring" HorizontalAlignment="Left" IsActive="False"/>
+            <Button x:Name="refresh_button" ToolTipService.ToolTip="Refresh"   HorizontalAlignment="Right" VerticalAlignment="Bottom" Click="refresh_button_Click">
+                <SymbolIcon Symbol="Refresh"/>
+            </Button>
+            <Button Visibility="Collapsed" x:Name="goto_feed" ToolTipService.ToolTip="Your Feed"  HorizontalAlignment="Right" VerticalAlignment="Bottom" Click="goto_feed_Click">
+                <SymbolIcon Symbol="List"/>
+            </Button>
+            <Button x:Name="addPodcast" Visibility="Collapsed"  ToolTipService.ToolTip="add a rss podcast feed"  HorizontalAlignment="Right" VerticalAlignment="Bottom" Click="addPodcast_Click">
+                <SymbolIcon Symbol="Add"/>
+            </Button>
+
+        </StackPanel>
+
+        <!--<StackPanel x:Name="loading_wrraper" Visibility="Collapsed">
+            <ProgressRing x:Name="loadingRing" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Visibility="Visible"></ProgressRing>
+            <TextBlock x:Name="loading_text" HorizontalAlignment="Stretch"/>
+        </StackPanel>-->
+        <GridView Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" TabNavigation="Cycle" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" x:Name="Podcasts_Grid">
+            <GridView.ItemTemplate>
+                <DataTemplate x:DataType="local:Podcast">
+                    <StackPanel DoubleTapped="StackPanel_DoubleTapped" RightTapped="StackPanel_RightTapped">
+                        <TextBlock Text="{Binding Name}"/>
+                        <Image Source="{Binding ImageUrl}" Width="150" Height="150"></Image>
+
+                    </StackPanel>
+
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+
+
+
+    </Grid>
+</Page>

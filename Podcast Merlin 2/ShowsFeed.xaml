@@ -1,0 +1,71 @@
+<!-- Copyright (c) Microsoft Corporation and Contributors. -->
+<!-- Licensed under the MIT License. -->
+
+<Page
+    x:Class="PodMerForWinUi.ShowsFeed"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:PodMerForWinUi"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    NavigationCacheMode="Enabled"
+    >
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="5*"/>
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0" Grid.Column="0">
+            <ListView FocusVisualMargin="100,100,100,100" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="Edge" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <ItemsStackPanel Orientation="Vertical" HorizontalAlignment="Stretch"></ItemsStackPanel>
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="local:ShowAndPodcast">
+                            <RelativePanel FocusVisualPrimaryBrush="Transparent">
+                            <Frame Margin="5,5,5,5" CornerRadius="10,10,10,10" x:Name="Thumbnail" RelativePanel.AlignLeftWithPanel="True" Width="75" Height="75" HorizontalAlignment="Left">
+                                <winui:ImageIcon  Source="{Binding Show.ThumbnailIconUrl}" />
+                            </Frame>
+                            <TextBlock Margin="5,5,5,5" x:Name="ShowName"  RelativePanel.LeftOf="play_panel" RelativePanel.RightOf="Thumbnail" TextWrapping="Wrap" Text="{Binding Show.Name, Mode=OneWay}" />
+                            <!--<TextBlock x:Name ="datePub"  RelativePanel.Below="ShowName" RelativePanel.AlignBottomWithPanel="True" RelativePanel.AlignLeftWith="ShowName" RelativePanel.AlignRightWith="ShowName" Text="{Binding Show.Published, Mode=OneWay}"/>-->
+                            <RelativePanel x:Name="play_panel" RelativePanel.AlignRightWithPanel="True" RelativePanel.AlignVerticalCenterWithPanel="True">
+                                <winui:ProgressBar x:Name="PodcastProgress" RelativePanel.Below="Play_btn" RelativePanel.AlignRightWith="Play_btn"  RelativePanel.AlignLeftWith="Play_btn" Visibility="{Binding Show.Vis, Mode=OneTime}" IsIndeterminate="False" Maximum="{Binding Show.Total, Mode=OneWay}" Value="{Binding Show.Position, Mode=TwoWay, UpdateSourceTrigger=Default}"/>
+                                <Button RelativePanel.AlignRightWithPanel="True" x:Name="Play_btn" HorizontalAlignment="Right" Click="Play_btn_Click">
+                                    <SymbolIcon Symbol="Play"/>
+                                </Button>
+                            </RelativePanel>
+
+                            </RelativePanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment"  Value="Stretch"></Setter>
+                        <Setter Property="HorizontalAlignment"  Value="Stretch"></Setter>
+                        <Setter Property="FocusVisualPrimaryBrush" Value="Red"/>
+                    </Style>
+                </ListView.ItemContainerStyle>
+            </ListView>
+        </ScrollViewer>
+
+        <Grid x:Name="show_ditailes_view" Grid.Column="1" DataContextChanged="show_ditailes_view_DataContextChanged">
+
+            <TextBlock>show notes:</TextBlock>
+            <winui:WebView2 Background="Transparent"
+                      IsRightTapEnabled="False"
+                      x:Name="show_notes_box"  
+                      Visibility="Visible" 
+                     
+                      ></winui:WebView2>
+        </Grid>
+    </Grid>
+</Page>
