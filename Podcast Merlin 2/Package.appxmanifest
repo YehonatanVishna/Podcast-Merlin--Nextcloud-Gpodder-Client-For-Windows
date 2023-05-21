@@ -12,7 +12,7 @@
     Publisher="CN=53EC1516-7E02-4617-8220-A83E0CD9390F"
     Version="1.0.3.0" />
 
-  <mp:PhoneIdentity PhoneProductId="c1eaf625-fcf2-4442-9aa8-36ea0f1dc130" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+  <mp:PhoneIdentity PhoneProductId="30ecaee2-fc90-4e44-8bb9-bc1719859311" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>Podcast Merlin</DisplayName>
@@ -38,7 +38,7 @@
         Square44x44Logo="Assets\Square44x44Logo.png"
         Description="Podcast Merlin 2"
         BackgroundColor="transparent">
-        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png"/>
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square71x71Logo="Assets\SmallTile.png" Square310x310Logo="Assets\LargeTile.png"/>
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
     </Application>
