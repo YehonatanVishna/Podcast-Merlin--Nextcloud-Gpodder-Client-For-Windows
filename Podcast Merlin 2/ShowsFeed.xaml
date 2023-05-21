@@ -12,6 +12,7 @@
     mc:Ignorable="d"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
     NavigationCacheMode="Enabled"
+     xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     >
 
     <Grid>
@@ -22,8 +23,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="5*"/>
         </Grid.RowDefinitions>
-        <ScrollViewer Grid.Row="0" Grid.Column="0">
-            <ListView FocusVisualMargin="100,100,100,100" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="Edge" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
+        <!--<ScrollViewer Grid.Row="0" Grid.Column="0" ViewChanged="ScrollViewer_ViewChanged">-->
+            <ListView FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
                 <ListView.ItemsPanel>
                     <ItemsPanelTemplate>
                         <ItemsStackPanel Orientation="Vertical" HorizontalAlignment="Stretch"></ItemsStackPanel>
@@ -55,7 +56,7 @@
                     </Style>
                 </ListView.ItemContainerStyle>
             </ListView>
-        </ScrollViewer>
+        <!--</ScrollViewer>-->
 
         <Grid x:Name="show_ditailes_view" Grid.Column="1" DataContextChanged="show_ditailes_view_DataContextChanged">
 

@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation and Contributors.
 // Licensed under the MIT License.
 
+using Microsoft.Toolkit.Collections;
+using Microsoft.Toolkit.Uwp;
 using Microsoft.UI.Xaml.Controls;
 using Podcast_Merlin_Uwp;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -17,6 +20,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
+using static PodMerForWinUi.MainPage;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -30,6 +34,7 @@ namespace PodMerForWinUi
     {
 
         public ObservableCollection<ShowAndPodcast> showsLs = new ObservableCollection<ShowAndPodcast>();
+        public object ls;
         //public IncrementalLoadingCollection<ShowsList, ShowAndPodcast> ShowsInc;
         //public List<Action> positions = MainPage.Actions.actions;
 
@@ -54,11 +59,25 @@ namespace PodMerForWinUi
         //        }
         //    }
         //}
-        protected override void OnNavigatedTo(NavigationEventArgs e)
+        protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
             //showsLs = e.Parameter as ObservableCollection<ShowAndPodcast>;
 
             apesode_ListView.ItemsSource = e.Parameter;
+            ls = e.Parameter;
+        //    if(e.Parameter != null && e.Parameter.GetType().IsGenericType &&
+        //e.Parameter.GetType().GetGenericTypeDefinition() == typeof(IncrementalLoadingCollection<,>))
+        if(e.Parameter is IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)
+            {
+                await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)e.Parameter).LoadMoreItemsAsync(100);
+            }
+            else
+            {
+                if(e.Parameter is IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>)
+                {
+                    await (e.Parameter as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+                }
+            }
             //var ls = ShowsAndPodcasts.OrderByDescending((show) => { return show.Show.Published; });
             //showsLs.Clear();
             //foreach (var show in ls.Take(500))
@@ -326,8 +345,32 @@ width: 1px;
 
         }
 
+        private void ScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+        {
+            if(apesode_ListView.ItemsSource is AllPodcastsShowsList)
+            {
+                var scrollViewer = (ScrollViewer)sender;
+                if (scrollViewer.VerticalOffset == scrollViewer.ScrollableHeight)
+                {
+                    try
+                    {
+                        apesode_ListView.LoadMoreItemsAsync();
+                    }
+                    catch
+                    {
 
+                    }
+                }
+                    
+            }
+        }
 
-
+        private async void apesode_ListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.ItemIndex == apesode_ListView.Items.Count - 10)
+            {
+                await apesode_ListView.LoadMoreItemsAsync();
+            }
+        }
     }
 }

@@ -362,6 +362,24 @@ where {whereArg};
             }
             return PodcastShows;
         }
+        public async Task<ObservableCollection<PodcastApesode>> get_all_shows_for_Podcast(Podcast podcast, int limit, int start)
+        {
+            await initAsync();
+            var Qury =
+    $@"Select * from PodcastShows where PodcastID ={podcast.ID} ORDER by Published DESC LIMIT {limit} OFFSET {start};";
+            SqliteCommand comd = new SqliteCommand(Qury, sqldb);
+            sqldb.Open();
+            var reader = comd.ExecuteReader();
+            var dt = new DataTable();
+            dt.Load(reader);
+            var PodcastShows = new ObservableCollection<PodcastApesode>();
+            foreach (DataRow row in dt.Rows)
+            {
+                PodcastShows.Add(parse_data_row(row, podcast));
+            }
+            return PodcastShows;
+        }
+
 
     }
 }
