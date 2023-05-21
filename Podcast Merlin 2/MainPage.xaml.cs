@@ -147,7 +147,7 @@ CoreDispatcherPriority.High,
                     loadingCompleted();
 
 
-                    Podcasts_Grid.ItemsSource = await Task.Run(async () => { await pull_new_info_about_podcast_put_on_file(Podcastss); return use_cashed_podcasts_and_put_them_on_screen(); });
+                    Podcasts_Grid.ItemsSource = await Task.Run(async () => { await pull_new_info_about_podcast_put_on_file(Podcastss); return await use_cashed_podcasts_and_put_them_on_screen(); });
                     update_loading_ring.IsActive = false;
 
                 }
@@ -588,37 +588,53 @@ Please don't close the app."
                 MainPage.Server_Details.token = token;
             }
         }
+        private static async Task<List<ShowAndPodcast>> getRangeForOnePodcast(int pageIndex, int pageSize, Podcast pod)
+        {
+            var a = await ShowsDb.get_all_shows_for_Podcast(pod ,pageSize, pageSize * pageIndex);
+            var showsAndPodcasts = new List<ShowAndPodcast>();
+
+            foreach (var show in a)
+            {
+                showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = pod, Show = show });
+            }
+            return showsAndPodcasts;
+        }
+        public class OnePodcastShowsList : IIncrementalSource<ShowAndPodcast>
+        {
+            public static Podcast podcast;
+            public ObservableCollection<ShowAndPodcast> Shows = new ObservableCollection<ShowAndPodcast>();
+            public static int lastIndex;
+
+            public async Task<IEnumerable<ShowAndPodcast>> GetPagedItemsAsync(int pageIndex, int pageSize, CancellationToken cancellationToken = default)
+            {
+                var show = MainWindow.mediaPlayer_with_poster.ShowLastPlayed;
+                var a = await getRangeForOnePodcast(pageIndex: pageIndex, pageSize: pageSize, podcast);
+
+                if (show != null)
+                {
+                    var cont = a.Where((podshow) => podshow.Show.PlayUrl.Equals(show.Show.PlayUrl));
+                    if (cont.Count() > 0)
+                    {
+                        var index = a.IndexOf(cont.FirstOrDefault());
+
+                        a[index] = show;
+                    }
+                }
+                lastIndex = pageIndex;
+                return a.AsEnumerable();
+            }
+        }
+
 
         private async void StackPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
             var podcast = (sender as StackPanel).DataContext as Podcast;
             App.MainWindow.WindowTitleText.Name = podcast.Name;
             //ApisodesList.Podcast = podcast;
-
-            //Frame.Navigate(typeof(ApisodesList));
-            var showsAndPodcasts = new ObservableCollection<ShowAndPodcast>();
-            var Shows = await ShowsDb.get_all_shows_for_Podcast(podcast, 300);
-            foreach (var show in Shows)
-            {
-                if (MainWindow.mediaPlayer_with_poster.ShowLastPlayed != null)
-                {
-                    if (show.PlayUrl.Equals(MainWindow.mediaPlayer_with_poster.ShowLastPlayed.Show.PlayUrl))
-                    {
-                        showsAndPodcasts.Add(MainWindow.mediaPlayer_with_poster.ShowLastPlayed);
-                    }
-                    else
-                    {
-                        showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = podcast, Show = show });
-                    }
-                }
-                else
-                {
-                    showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = podcast, Show = show });
-                }
-            }
-
-            Frame.NavigateToType(typeof(ShowsFeed), showsAndPodcasts, new FrameNavigationOptions() { IsNavigationStackEnabled = false });
-            Frame.Navigate(typeof(ShowsFeed), showsAndPodcasts);
+            OnePodcastShowsList.podcast = podcast;
+            var collection = new IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>(itemsPerPage: 50);
+            //await collection.LoadMoreItemsAsync(50);
+            Frame.Navigate(typeof(ShowsFeed), collection);
         }
 
         private async void refresh_button_Click(object sender, RoutedEventArgs e)
@@ -639,7 +655,7 @@ Please don't close the app."
             }
             update_loading_ring.IsActive = false;
         }
-        private static async Task<List<ShowAndPodcast>> getRange(int pageIndex, int pageSize)
+        private static async Task<List<ShowAndPodcast>> getRangeForAllPodcasts(int pageIndex, int pageSize)
         {
             var a = await ShowsDb.get_all_shows(pageSize, pageSize* pageIndex);
                     
@@ -655,14 +671,15 @@ Please don't close the app."
                     }
             return showsAndPodcasts;
         }
-        public class ShowsList : IIncrementalSource<ShowAndPodcast>
+        public class AllPodcastsShowsList : IIncrementalSource<ShowAndPodcast>
         {
             public ObservableCollection<ShowAndPodcast> Shows = new ObservableCollection<ShowAndPodcast>();
+            public static int lastIndex;
 
             public async Task<IEnumerable<ShowAndPodcast>> GetPagedItemsAsync(int pageIndex, int pageSize, CancellationToken cancellationToken = default)
             {
                 var show = MainWindow.mediaPlayer_with_poster.ShowLastPlayed;
-                var a = await getRange(pageSize, pageSize);
+                var a = await getRangeForAllPodcasts(pageIndex: pageIndex, pageSize: pageSize);
                 
                 if(show != null)
                 {
@@ -674,35 +691,18 @@ Please don't close the app."
                         a[index] = show;
                     }
                 }
+                lastIndex = pageIndex;
                 return a.AsEnumerable();
             }
         }
         private async void goto_feed_Click(object sender, RoutedEventArgs e)
         {
             App.MainWindow.WindowTitleText.Name = "Podcasts Feed";
-            //var collection = new IncrementalLoadingCollection<ShowsList, ShowAndPodcast>(itemsPerPage:5);
-
+            var collection = new IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>(itemsPerPage: 50);
+            //await collection.LoadMoreItemsAsync(50);
             var showsAndPodcasts = new ObservableCollection<ShowAndPodcast>();
-            //foreach(var pod in Podcasts)
-            //{
-            //    var shows = await ShowsDb.get_all_shows_for_Podcast(pod);
-            //    foreach(var show in shows)
-            //    {
-            //        showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = pod, Show = show});
-            //    }
-            //}
-            var shows = await ShowsDb.get_all_shows(300);
-            var podArr = new Podcast[Podcasts.Max((pod) => pod.ID) + 1];
-            foreach (var pod in Podcasts)
-            {
-                podArr[pod.ID] = pod;
-            }
-            foreach (var show in shows)
-            {
-                showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = podArr[show.PodcastID], Show = show });
-            }
 
-            Frame.Navigate(typeof(ShowsFeed), showsAndPodcasts);
+            Frame.Navigate(typeof(ShowsFeed), collection);
         }
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {

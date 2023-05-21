@@ -41,7 +41,10 @@ namespace PodMerForWinUi.Sql.SqlLite
             await init();
             try
             {
-
+                if(a == null)
+                {
+                    throw new Exception();
+                }
 
                 var Qury =
                     $@"Select * from Podcasts where Name = '{a.Name.Replace("'", "''")}' and ( RssUrl = '{a.Rss_url}' OR ImageUrl = '{a.ImageUrl}')";
