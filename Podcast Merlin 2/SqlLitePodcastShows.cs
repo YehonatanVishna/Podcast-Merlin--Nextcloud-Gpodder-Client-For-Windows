@@ -27,9 +27,19 @@ namespace PodMerForWinUi.Sql.SqlLite
 
         public SqlLitePodcastsShows()
         {
+            initAsync();
+        }
+        ~SqlLitePodcastsShows()
+        {
+            sqldb.Close();
+            sqldb.Dispose();
         }
 
         public async Task initAsync()
+        {
+            sqldb = await getNewCon();
+        }
+        public async Task<SqliteConnection> getNewCon()
         {
             await ApplicationData.Current.LocalFolder.CreateFileAsync("sqliteSample.db", CreationCollisionOption.OpenIfExists);
             string dbpath = Path.Combine(ApplicationData.Current.LocalFolder.Path,
@@ -57,7 +67,7 @@ namespace PodMerForWinUi.Sql.SqlLite
                 var createTable = new SqliteCommand(tableCommand, db);
                 createTable.ExecuteReader();
 
-                sqldb = db;
+                return db;
             }
         }
 
@@ -134,23 +144,10 @@ where {whereArg};
             await sqldb.OpenAsync();
             return command.ExecuteNonQuery() > 0;
         }
-        public async Task<bool> SaveBulck(List<PodcastApesode> shows)
+        private string getSaveStr(PodcastApesode show)
         {
-            var stopWatch = new Stopwatch();
-            stopWatch.Start();
-            await initAsync();
-            var commands = "";
-            var completed = new List<PodcastApesode>();
-            var showsConst = shows.ToImmutableArray();
-            var Tasks = new List<Task<string>>();
-            var com = 0;
-            foreach (var show in showsConst)
-            {
-
-                var Ctask = Task.Run(() =>
-                {
-                    var whereArg = $@"Name = '{ExtraFunctions.reparse_string(show.Name)}' and(PlayUrl = '{show.PlayUrl}' OR Discription = '{ExtraFunctions.reparse_string(show.Discription)}')";
-                    var cmm = $@"
+            var whereArg = $@"Name = '{ExtraFunctions.reparse_string(show.Name)}' and(PlayUrl = '{show.PlayUrl}' OR Discription = '{ExtraFunctions.reparse_string(show.Discription)}')";
+            var cmm = $@"
 
 INSERT INTO PodcastShows (Name,PlayUrl, Published, Discription, Position, Total, Started, PodcastID, ThumbnailIconUrl, PublishedDate )
 SELECT '{ExtraFunctions.reparse_string(show.Name)}', '{show.PlayUrl}', 
@@ -168,40 +165,141 @@ ThumbnailIconUrl = '{show.ThumbnailIconUrl}',
 PublishedDate = {show.Published.ToUnixTimeMilliseconds()}
 where {whereArg};
 ";
+            return cmm;
+        }
+        public async Task<bool> SaveBulck(List<PodcastApesode> shows)
+        {
+            var stopWatch = new Stopwatch();
+            stopWatch.Start();
+            await initAsync();
+            var commands = "";
+            var completed = new List<PodcastApesode>();
+            var showsConst = shows.ToImmutableArray();
+            var Tasks = new List<Task<string>>();
+            var com = 0;
+            var newTasks = new List<Task<bool>>();
+            foreach (var show in showsConst)
+            {
+
+                var Ctask = Task.Run(() =>
+                {
+                    var cmm = getSaveStr(show);
                     com++;
                     return cmm;
                 });
                 Tasks.Add(Ctask);
+                //if (Tasks.Count > 500)
+                //{
+                //    Task.WaitAll(Tasks.ToArray());
+                //    var cmm = "";
+                //    foreach (var ts in Tasks)
+                //    {
+                //        cmm += ts.Result;
+                //    }
+                //    newTasks.Add(Task.Run(async () =>
+                //    {
+                //    sendToDb:
+                //        try
+                //        {
+                //            return await sendCommands(cmm);
+                //        }
+                //        catch
+                //        {
+                //            await Task.Delay(500);
+                //            goto sendToDb;
+                //        }
+
+
+                    
+
+                //    }));
+
+
+                //    Tasks.Clear();
+                //}
             }
-            var res = true;
-            await Task.WhenAll(Tasks.ToArray());
-            var newTasks = new List<Task<bool>>();
-            for (int i = 0; i < Tasks.Count(); i++)
+            Task.WaitAll(Tasks.ToArray());
+            var cmm1 = "";
+            foreach (var ts in Tasks)
             {
-                var task = Tasks[i];
-                commands += task.Result;
-                if (i % 200 == 0)
+                cmm1 += ts.Result;
+            }
+            newTasks.Add(Task<bool>.Run(async () =>
+            {
+            sendToDb:
+                try
                 {
-                    newTasks.Add(sendCommands(commands + "")
-                        );
-                    commands = "";
+                    if(cmm1.Length > 0)
+                        return await sendCommands(cmm1);
                 }
-            }
-            newTasks.Add(sendCommands(commands));
-            Task.WaitAll(newTasks.ToArray());
-            foreach (var task in newTasks)
+                catch
+                {
+                    await Task.Delay(200 + ((int)((new Random()).NextDouble()*100)) );
+                    goto sendToDb;
+                }
+                return true;
+
+
+
+
+            }));
+
+
+            Tasks.Clear();
+            Task<bool>.WaitAll(newTasks.ToArray());
+
+            foreach(var res in newTasks)
             {
-                res = res && task.Result;
+                if (!res.Result)
+                    return false;
             }
-            stopWatch.Stop();
-            return res;
+            return true;
+            //var res = true;
+            //await Task.WhenAll(Tasks.ToArray());
+            //var newTasks = new List<Task<bool>>();
+            //for (int i = 0; i < Tasks.Count(); i++)
+            //{
+            //    var task = Tasks[i];
+            //    commands += task.Result;
+            //    if (i % 200 == 0)
+            //    {
+            //        newTasks.Add(sendCommands(commands + "")
+            //            );
+            //        commands = "";
+            //    }
+            //}
+            //newTasks.Add(sendCommands(commands));
+            //Task.WaitAll(newTasks.ToArray());
+            //foreach (var task in newTasks)
+            //{
+            //    res = res && task.Result;
+            //}
+            //stopWatch.Stop();
+            //return res;
 
         }
+        public static Task<bool> lastAction;
         public async Task<bool> sendCommands(string cmd)
         {
-            var command = new SqliteCommand(cmd, sqldb);
-            await sqldb.OpenAsync();
-            return command.ExecuteNonQuery() > 0;
+            var newCon = await getNewCon();
+            sqldb.Open();
+            var command = new SqliteCommand(cmd, newCon);
+            await newCon.OpenAsync();
+            check:
+            if (lastAction!=null && !lastAction.IsCompleted)
+            {
+                lastAction.Wait();
+                await Task.Delay(((int)((new Random()).NextDouble() * 200)));
+                goto check;
+            }
+            if (lastAction == null || lastAction.IsCompleted)
+                lastAction = Task<bool>.Run(async () => (await command.ExecuteNonQueryAsync()) > 0);
+            else
+                goto check;
+            lastAction.Wait();
+            newCon.Dispose();
+            newCon.Close();
+            return lastAction.Result;
         }
         public int doesExistStateAddID(PodcastApesode a)
         {

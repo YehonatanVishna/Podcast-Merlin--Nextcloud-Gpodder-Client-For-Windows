@@ -94,7 +94,20 @@ namespace PodMerForWinUi.Sql.SqlLite
                 var cmd = $@"update Podcasts set Name = '{ExtraFunctions.reparse_string(a.Name)}', RssUrl= '{a.Rss_url}', ImageUrl = '{a.ImageUrl}' Where ID = {a.ID}";
                 sqldb.Open();
                 SqliteCommand insert_comd = new SqliteCommand(cmd, sqldb);
-                return await insert_comd.ExecuteNonQueryAsync() > 0;
+                exequ:
+                try
+                {
+                    return await insert_comd.ExecuteNonQueryAsync() > 0;
+
+                }
+                catch(Exception e)
+                {
+                    if(e.Message.Equals(@"SQLite Error 5: 'database is locked'."))
+                    {
+                        Task.Delay(((int)(new Random()).NextDouble() * 100));
+                        goto exequ;
+                    }
+                }
             }
             return false;
         }

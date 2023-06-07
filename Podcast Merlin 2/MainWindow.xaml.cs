@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
+using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
@@ -59,6 +60,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
         public static boolObservable isDisconnected = new boolObservable() { Booly = false };
         public static MainPage mainPage;
         public static CoreDispatcher dispatcher;
+        public ApplicationViewTitleBar titleBar1;
         public MainWindow()
         {
             Task.Run(async () =>
@@ -69,14 +71,16 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
             }).Wait();
             this.InitializeComponent();
             App.MainWindow = this;
-            var titleBar = ApplicationView.GetForCurrentView().TitleBar;
-            titleBar.BackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
-            titleBar.InactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
-            titleBar.ButtonBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
-            titleBar.ButtonInactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1 = ApplicationView.GetForCurrentView().TitleBar;
+
+            titleBar1.BackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.InactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.ButtonBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.ButtonInactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
             var coreTitleBar = CoreApplication.GetCurrentView().TitleBar;
             
             coreTitleBar.ExtendViewIntoTitleBar = true;
+            this.ActualThemeChanged += MainWindow_ActualThemeChanged ;
             fff.Navigated += Fff_Navigated;
             dispatcher = this.Dispatcher;
             // Set XAML element as a drag region.
@@ -102,6 +106,14 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
 
 
 
+        }
+
+        private void MainWindow_ActualThemeChanged(FrameworkElement sender, object args)
+        {
+            titleBar1.BackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.InactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.ButtonBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
+            titleBar1.ButtonInactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
         }
 
         private void Fff_Navigated(object sender, Windows.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -174,11 +186,13 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                     {
                         await Task.Run(() => Sync.SyncService.SendEnqueuedActions());
                     }
+
                     Dispatcher.RunAsync(
                     CoreDispatcherPriority.High,
                     () =>
                     {
-                        mainPage.refesh();
+                        if(localSettings.Values["HasDoenInitialDown"]!=null && localSettings.Values["HasDoenInitialDown"].ToString().Equals(true.ToString()))
+                            mainPage.refesh();
                     }
                     );
                 }

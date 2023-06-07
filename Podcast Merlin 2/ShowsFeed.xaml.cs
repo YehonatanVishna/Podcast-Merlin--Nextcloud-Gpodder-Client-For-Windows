@@ -9,13 +9,16 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+//using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using Windows.ApplicationModel.Core;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Storage.Streams;
+using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
@@ -35,75 +38,71 @@ namespace PodMerForWinUi
 
         public ObservableCollection<ShowAndPodcast> showsLs = new ObservableCollection<ShowAndPodcast>();
         public object ls;
-        //public IncrementalLoadingCollection<ShowsList, ShowAndPodcast> ShowsInc;
-        //public List<Action> positions = MainPage.Actions.actions;
-
+        public FeedContent feedContentType;
+        public object feedContent;
         public ShowsFeed()
         {
             this.InitializeComponent();
-            //ShowsInc = new IncrementalLoadingCollection<ShowsList, ShowAndPodcast>(source: showsLs, 20);
-
         }
 
-        //public void markPlayed()
-        //{
-        //    foreach (var item in showsLs)
-        //    {
-        //        foreach (var action in positions)
-        //        {
-        //            if (item.Show.PlayUrl.Equals(action.episode))
-        //            {
-        //                item.Show.Total = action.total;
-        //                item.Show.Position = action.position;
-        //            }
-        //        }
-        //    }
-        //}
+
         protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
-            //showsLs = e.Parameter as ObservableCollection<ShowAndPodcast>;
 
-            apesode_ListView.ItemsSource = e.Parameter;
-            ls = e.Parameter;
-        //    if(e.Parameter != null && e.Parameter.GetType().IsGenericType &&
-        //e.Parameter.GetType().GetGenericTypeDefinition() == typeof(IncrementalLoadingCollection<,>))
-        if(e.Parameter is IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)
+            //apesode_ListView.ItemsSource = e.Parameter;
+            //ls = e.Parameter;
+
+            //if(ls is IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)
+            //    {
+            //        await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ls).LoadMoreItemsAsync(100);
+            //    }
+            //    else
+            //    {
+            //        if(ls is IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>)
+            //        {
+            //            await (ls as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+            //        }
+            //    }
+            
+            var ParameterList = e.Parameter as List<object>;
+            apesode_ListView.ItemsSource = ParameterList[1];
+            var PageType = (FeedContent) ParameterList.FirstOrDefault();
+            if(PageType == FeedContent.AllPodcasts)
             {
-                await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)e.Parameter).LoadMoreItemsAsync(100);
+                await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ParameterList[1]).LoadMoreItemsAsync(100);
+                
             }
             else
             {
-                if(e.Parameter is IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>)
+                if(PageType == FeedContent.OnePodcast)
                 {
-                    await (e.Parameter as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+                    await (ParameterList[1] as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+                    feedContent = ParameterList[2];
                 }
             }
-            //var ls = ShowsAndPodcasts.OrderByDescending((show) => { return show.Show.Published; });
-            //showsLs.Clear();
-            //foreach (var show in ls.Take(500))
-            //{
-            //    showsLs.Add(show);
-            //}
-            //markPlayed();
+            feedContentType = PageType;
+            Refresh_btn.Command = new Refresh_Btn_Command();
+            Refresh_btn.CommandParameter = this;
+            apesode_ListView.SelectedIndex = 0;
+        }
+        class Refresh_Btn_Command : ICommand
+        {
+            public event EventHandler CanExecuteChanged;
+            public static Task LastRefresh;
+            public bool CanExecute(object parameter)
+            {
+                return ((LastRefresh == null) || (LastRefresh != null && LastRefresh.IsCompleted));
+                return false;
+            }
 
-
-            //var ee = MainWindow.mediaPlayer_with_poster.ShowLastPlayed ;
-            //if (MainWindow.mediaPlayer_with_poster.ShowLastPlayed != null)
-            //{
-            //    var show = MainWindow.mediaPlayer_with_poster.ShowLastPlayed;
-            //    Task.Run(() =>
-            //    {
-            //        var same = showsLs.Where((showPod) => { return showPod.Show.PlayUrl.Equals(show.Show.PlayUrl); });
-            //        if (same != null && same.Count() > 0)
-            //        {
-            //            var index = showsLs.IndexOf(same.FirstOrDefault());
-            //            showsLs[index] = show;
-
-            //        }
-            //    });
-
-            //}
-            //apesode_ListView.ItemsSource = showsLs;
+            public void Execute(object parameter)
+            {
+                ShowsFeed showsFeed = parameter as ShowsFeed;
+                if(showsFeed.feedContentType == FeedContent.OnePodcast)
+                {
+                    
+                }
+            }
         }
         private Task lastSyncTask;
         private DispatcherTimer update_position_dispach_timer;
@@ -135,6 +134,8 @@ namespace PodMerForWinUi
                         lastSyncTask = task;
                     }
                     );
+                    pod.Show.PlayBrush = new SolidColorBrush( getRightColor());
+                    pod.Show.IsPlaying = false;
                     if (update_position_dispach_timer != null)
                     {
                         update_position_dispach_timer.Stop();
@@ -182,34 +183,8 @@ namespace PodMerForWinUi
             {
                 MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, 0);
             }
-            //var conatiner = apesode_ListView.ContainerFromIndex(showsLs.IndexOf(PodcastAndShow));
-            //var bar = conatiner.FindDescendant("PodcastProgress") as ProgressBar;
-            //// Define the binding source
-            //Binding binding = new Binding() { Mode= BindingMode.TwoWay };
-            //binding.Source = MainWindow.MediaPlayer.MediaPlayer.Position.TotalSeconds;
-
-            //// Create the binding
-            //bar.SetBinding(ProgressBar.ValueProperty, binding);
-
-
-
-            //bool isSaved = false;
-            //foreach (var position in positions)
-            //{
-            //    if (position.episode.Equals(playurl))
-            //    {
-            //        apesode.Started = position.position;
-            //        MainWindow.MediaPlayer.MediaPlayer.Position = new System.TimeSpan(0, 0, position.position);
-            //        isSaved = true;
-            //    }
-            //}
-
-
-            //if (!isSaved)
-            //{
-            //    apesode.Started = 0;
-            //}
-
+            show.PlayBrush = new SolidColorBrush( Colors.ForestGreen);
+            show.IsPlaying = true;
             var a= (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as Panel).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
             a.Visibility = Visibility.Visible;
             MainWindow.MediaPlayer.MediaPlayer.Play();
@@ -223,55 +198,55 @@ namespace PodMerForWinUi
         public ulong lastNav = 0;
         public ulong lastNav2 = 0;
 
+        public static Color getRightColor()
+        {
+            var linkColor = (Color)(Application.Current.Resources["SystemAccentColor"]);
+            if (App.Current.RequestedTheme == ApplicationTheme.Dark)
+                linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight2"]);
+            else
+            {
+                linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark2"]);
+            }
+            return linkColor;
+        }
         private async void apesode_ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (((sender as ListView).SelectedItem) != null)
             {
+                show_notes_box.PointerWheelChanged += Show_notes_box_PointerWheelChanged;
+                this.SizeChanged += ShowsFeed_SizeChanged;
                 var show = ((ShowAndPodcast)(sender as ListView).SelectedItem).Show;
                 var textColor = "";
                 var Forground_color = (show_notes_box.Foreground as SolidColorBrush).Color;
                 textColor = $"rgb({Forground_color.R},{Forground_color.G}, {Forground_color.B})";
                 var backColor = (Application.Current.Resources["ApplicationPageBackgroundThemeBrush"] as SolidColorBrush).Color;
+                var linkColor = getRightColor();
                 var showNotesHtml = $@"
 <html>
 <head></head>
 <body style="" color:{textColor}; background-color:rgb({backColor.R},{backColor.G},{backColor.B}); font-family: Arial, Helvetica, sans-serif; word-break: break-word; white-space: normal; "">
 <style>
- /* width */
-::-webkit-scrollbar {{width: 10px;
-  border-radius: 10px;
+
+a {{
+color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
 }}
-
-/* Track */
-::-webkit-scrollbar-track {{background: rgb({backColor.R},{backColor.G},{backColor.B});
-width: 1px;
-}}
-
-/* Track */
-::-webkit-scrollbar-track:hover {{background: rgb({backColor.R},{backColor.G},{backColor.B});
-
-}}
-
-/* Handle */
-::-webkit-scrollbar-thumb {{background: rgb(100,100,100);
-  border-radius: 20px;
-
-}}
-
-/* Handle on hover */
-::-webkit-scrollbar-thumb:hover {{background: #555;
-  border-radius: 15px;
-}}
+/* Hide the default scrollbar */
+::-webkit-scrollbar {{width: 0;
+    height: 0;
 }}
 </style>
+<div id=""cont"">
 {show.Discription}
+</div>
 </body>
 </html>
 ";
                 await show_notes_box.EnsureCoreWebView2Async();
                 show_notes_box.NavigateToString(showNotesHtml);
+                
                 show_notes_box.NavigationCompleted += async (webViewSender1, args1) =>
                 {
+                    SetWebViewHeight();
                     show_notes_box.NavigationStarting += async (webViewSender, args) =>
                     {
 
@@ -306,6 +281,7 @@ width: 1px;
                                 // Cancel the navigation
                                 args.Cancel = true;
                                 show_notes_box.NavigateToString(showNotesHtml);
+                                show_notes_box.Height = await GetWebViewContentHeightAsync(show_notes_box);
 
                             }
                         }
@@ -316,6 +292,57 @@ width: 1px;
 
                 };
             }
+        }
+
+        private void ShowsFeed_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            SetWebViewHeight();
+        }
+
+        private async void SetWebViewHeight()
+        {
+           double contHight = await GetWebViewContentHeightAsync(show_notes_box);
+            if(contHight > show_ditailes_view.ActualSize.Y)
+            {
+                show_notes_box.Height = contHight + 10;
+            }
+            else
+            {
+                show_notes_box.Height = show_ditailes_view.Height;
+            }
+        }
+        private async Task<double> GetWebViewContentHeightAsync(WebView2 webView)
+        {
+            // Execute JavaScript code within the WebView2 to retrieve the content height
+            string script = @"document.getElementById(""cont"").clientHeight.toString() + "".0"";";
+
+            try
+            {
+                var result = (await webView.ExecuteScriptAsync(script)).Replace('"',' ');
+                if (double.TryParse(result, out double contentHeight))
+                {
+                    return contentHeight + 20;
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+
+            return 0; // Return a default height if retrieval fails
+        }
+        private void Show_notes_box_PointerWheelChanged(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            int wheelDelta = e.GetCurrentPoint(sender as UIElement).Properties.MouseWheelDelta;
+                show_ditailes_view.ChangeView(null, show_ditailes_view.VerticalOffset - wheelDelta, null);
+        }
+
+        private void Show_notes_box_ManipulationDelta(object sender, Windows.UI.Xaml.Input.ManipulationDeltaRoutedEventArgs e)
+        {
+            //// Update the ScrollViewer's position based on the manipulation delta
+            //ScrollViewer scrollViewer = show_ditailes_view; // Replace "MyScrollViewer" with the actual name of your ScrollViewer control
+            //scrollViewer.ChangeView(scrollViewer.HorizontalOffset - e.Delta.Translation.X,
+            //                        scrollViewer.VerticalOffset,
+            //                        null);
         }
 
         private void Show_notes_box_NavigationCompleted(WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)

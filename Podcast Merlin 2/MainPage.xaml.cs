@@ -100,27 +100,18 @@ namespace PodMerForWinUi
         }
         public async Task<ObservableCollection<Podcast>> use_cashed_podcasts_and_put_them_on_screen()
         {
-            //var stop = new Stopwatch();
-            //stop.Start();
             var Pods = await PodsDb.get_all_podcasts();
-            //var ord = Pods.OrderBy((podcast) => { return podcast.Name; });
-            //var Podcasts = new ObservableCollection<Podcast>();
-            //int i = 0;
-            //foreach (var pod in ord)
-            //{
-            //    try
-            //    {
-            //        //pod.PodcastApesodes = await ShowsDb.get_all_shows_for_Podcast(pod); 
-            //        Podcasts.Add(pod);
-            //    }
-            //    catch
-            //    {
-
-            //    }
-            //    i++;
-            //}
-            //Task.WaitAll(Tasks);
-            //stop.Stop();
+            await Dispatcher.RunAsync(
+CoreDispatcherPriority.High,
+() =>
+{
+Podcasts.Clear();
+foreach (var item in Pods)
+{
+Podcasts.Add(item);
+};
+}
+);
             return Pods;
         }
         public async Task putPodcastsOnScreen()
@@ -128,50 +119,46 @@ namespace PodMerForWinUi
             var Pods = new ObservableCollection<Podcast>();
             try
             {
-                if (localSettings.Values["lastCheckedPodcasts"]!= null && (DateTime.Now - DateTime.Parse(localSettings.Values["lastCheckedPodcasts"].ToString())).TotalHours < 2)
+                if (localSettings.Values["HasDoenInitialDown"] != null && localSettings.Values["HasDoenInitialDown"].ToString().Equals(true.ToString()))
                 {
-                    //Podcasts_Grid.ShowsScrollingPlaceholders = true;
-                    var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
-                    Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
-                    Dispatcher.RunAsync(
-CoreDispatcherPriority.High,
-() =>
-{
-    Podcasts.Clear();
-    foreach (var item in Podcastss)
-    {
-        Podcasts.Add(item);
-    };
-}
-);
-                    loadingCompleted();
+                    if (localSettings.Values["lastCheckedPodcasts"] != null && (DateTime.Now - DateTime.Parse(localSettings.Values["lastCheckedPodcasts"].ToString())).TotalHours < 2)
+                    {
+                        var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
+                        Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
+                        loadingCompleted();
 
 
-                    Podcasts_Grid.ItemsSource = await Task.Run(async () => { await pull_new_info_about_podcast_put_on_file(Podcastss); return await use_cashed_podcasts_and_put_them_on_screen(); });
-                    update_loading_ring.IsActive = false;
+                        Podcasts_Grid.ItemsSource = await Task.Run(async () => { await pull_new_info_about_podcast_put_on_file(Podcastss); return await use_cashed_podcasts_and_put_them_on_screen(); });
+                        update_loading_ring.IsActive = false;
+
+                    }
+                    else
+                    {
+                        var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
+                        Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
+                        Podcasts.Clear();
+                        foreach (var item in Podcastss)
+                        {
+                            Podcasts.Add(item);
+                        }
+                        if (Podcasts.Count > 0)
+                        {
+                            loadingCompleted();
+                        }
+                        throw new Exception();
+                    }
 
                 }
                 else
                 {
-                    var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
-                    Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
-                    Podcasts.Clear();
-                    foreach (var item in Podcastss)
-                    {
-                        Podcasts.Add(item);
-                    }
-                    if(Podcasts.Count > 0)
-                    {
-                        loadingCompleted();
-                    }
-                    throw new Exception();
+                     await Task.Run(async ()=> await InitialDownload());
                 }
-
             }
+
             catch
             {
                 update_loading_ring.IsActive = true;
-                if(localSettings.Values["lastCheckedPodcasts"] != null)
+                if (localSettings.Values["lastCheckedPodcasts"] != null)
                 {
                     Podcasts_Grid.ItemsSource = await use_cashed_podcasts_and_put_them_on_screen();
                 }
@@ -185,9 +172,95 @@ CoreDispatcherPriority.High,
 
 
         }
+
+        private async Task InitialDownload()
+        {
+            Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                update_loading_ring.IsActive = true;
+            });
+            //var Pods = currentPodcasts;
+            var podcasts_rss_url = await Sync.SyncService.get_podcasts_urls();
+                var newPods = new ObservableCollection<Podcast>();
+                var Tasks = new List<Task>();
+            await Dispatcher.RunAsync(CoreDispatcherPriority.High, () =>
+            {
+                Podcasts_Grid.ItemsSource = Podcasts;
+            });
+            //var showLs = new List<PodcastApesode>();
+            foreach (var url in podcasts_rss_url)
+            {
+                Tasks.Add(Task.Run(async () => {
+                    try { 
+                    var Podb = new Sql.SqlLite.SqlLitePodcasts();
+                    var Shodb = new Sql.SqlLite.SqlLitePodcastsShows();
+                    var ts = new Task[] { Task.Run(async () => await PodsDb.init())};
+                    var pod = await Podcast.get_podcast_from_url_string(url);
+                    Task.WaitAll(ts);
+                    try
+                    {
+                        pod.ID = await PodsDb.add(pod);
+
+                    }
+                    catch
+                    {
+                        await Podb.update(pod);
+                    }
+                    foreach(var show in pod.PodcastApesodes)
+                    {
+                        show.PodcastRss = pod.Rss_url;
+                        show.PodcastID = pod.ID;
+                    }
+                    await ShowsDb.SaveBulck(pod.PodcastApesodes.ToList());
+                    Dispatcher.RunAsync(CoreDispatcherPriority.High, () =>
+                    {
+                        Podcasts.Add(pod);
+                    });
+                    }
+                    catch
+                    {
+
+                    }
+                }));
+            }
+            Task.WaitAll(Tasks.ToArray());
+            //await ShowsDb.SaveBulck(showLs);
+
+                //Newtonsoft.Json.JsonSerializer jsonSerializer = new Newtonsoft.Json.JsonSerializer()
+                //{
+                //    Formatting = Newtonsoft.Json.Formatting.Indented,
+
+                //};
+
+                //Podcasts_Grid.ItemsSource = Pods;
+
+
+                //var Pods = await PodsDb.get_all_podcasts();
+                //foreach (var pod in Pods)
+                //{
+                //    pod.PodcastApesodes = await ShowsDb.get_all_shows_for_Podcast(pod);
+                //}
+                //Podcasts = Pods;
+                //var textWriter = new StringWriter();
+
+            //Windows.Storage.StorageFolder storageFolder = Windows.Storage.ApplicationData.Current.LocalFolder;
+            //Windows.Storage.StorageFile sampleFile = await storageFolder.CreateFileAsync("podcasts.json", Windows.Storage.CreationCollisionOption.ReplaceExisting);
+            //await Windows.Storage.FileIO.WriteTextAsync(sampleFile, Newtonsoft.Json.JsonConvert.SerializeObject(Pods.ToList()));
+            localSettings.Values["last_checked_actions_timestamp"] = null;
+                localSettings.Values["lastCheckedPodcasts"] = DateTime.Now.ToString();
+            Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
+            localSettings.Values["HasDoenInitialDown"] = true.ToString();
+            loadingCompleted();
+            Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                refesh();
+            });
+
+
+        }
         private async Task add_podcast_on_end(string url, ObservableCollection<Podcast> pods)
         {
-            pods.Add(await get_podcast_from_url_string(url));
+            pods.Add(await Podcast.get_podcast_from_url_string(url));
         }
         public static bool IsSameShow(PodcastApesode show, PodcastApesode Show)
         {
@@ -285,7 +358,6 @@ CoreDispatcherPriority.High,
         }
         public async Task pull_new_info_about_podcast_put_on_file(ObservableCollection<Podcast> currentPodcasts)
         {
-            //var Pods = currentPodcasts;
             var Pods = await PodsDb.get_all_podcasts();
             foreach (var pod in Pods)
             {
@@ -297,7 +369,6 @@ CoreDispatcherPriority.High,
             foreach (var url in podcasts_rss_url)
             {
                 Tasks.Add(Task.Run(async ()=> await add_podcast_on_end(url, newPods)));
-                //Pods.Add(await get_podcast_from_url_string(url));
             }
             Task.WaitAll(Tasks.ToArray());
 
@@ -308,10 +379,6 @@ CoreDispatcherPriority.High,
                 Formatting = Newtonsoft.Json.Formatting.Indented,
 
             };
-
-            //Podcasts_Grid.ItemsSource = Pods;
-
-
             Pods = await PodsDb.get_all_podcasts();
             foreach (var pod in Pods)
             {
@@ -319,170 +386,7 @@ CoreDispatcherPriority.High,
             }
             Podcasts = Pods;
             var textWriter = new StringWriter();
-
-            Windows.Storage.StorageFolder storageFolder = Windows.Storage.ApplicationData.Current.LocalFolder;
-            Windows.Storage.StorageFile sampleFile = await storageFolder.CreateFileAsync("podcasts.json", Windows.Storage.CreationCollisionOption.ReplaceExisting);
-            await Windows.Storage.FileIO.WriteTextAsync(sampleFile, Newtonsoft.Json.JsonConvert.SerializeObject(Pods.ToList()));
-
             localSettings.Values["lastCheckedPodcasts"] = DateTime.Now.ToString();
-
-
-        }
-        public async Task<Podcast> get_podcast_from_url_string(string url)
-        {
-
-            var pod = new Podcast() { Rss_url = url };
-            var Client = new HttpClient();
-            try
-            {
-                Windows.Web.Syndication.SyndicationClient client = new Windows.Web.Syndication.SyndicationClient();
-                Windows.Web.Syndication.SyndicationFeed feedy;
-                // The URI is validated by catching exceptions thrown by the Uri constructor.
-                System.Uri uri = null;
-                // Use your own uriString for the feed you are connecting to.
-                try
-                {
-                    uri = new System.Uri(url);
-                }
-                catch { }
-                client.SetRequestHeader("User-Agent", "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; WOW64; Trident/6.0)");
-
-
-                feedy = await client.RetrieveFeedAsync(uri);
-
-                foreach (var atr in feedy.ElementExtensions)
-                {
-                    try
-                    {
-                        switch (atr.NodeName)
-                        {
-                            case "image":
-                                if (atr.NodeNamespace.Equals("http://www.itunes.com/dtds/podcast-1.0.dtd"))
-                                {
-                                    pod.ImageUrl = atr.AttributeExtensions[0].Value;
-                                }
-                                else
-                                {
-                                    if (pod.ImageUrl == "" || pod.ImageUrl == null)
-                                    {
-                                        pod.ImageUrl = atr.NodeValue;
-                                    }
-                                }
-                                break;
-                        }
-                    }
-                    catch { }
-                }
-                pod.Name = feedy.Title.Text;
-                try
-                {
-                    foreach (var item in feedy.Items)
-                    {
-                        try
-                        {
-                            var app = new PodcastApesode();
-                            foreach (var link in item.Links)
-                            {
-                                if (link.Relationship.Equals("enclosure"))
-                                {
-                                    app.PlayUrl = link.Uri.ToString();
-                                }
-                            }
-                            app.Name = item.Title.Text;
-                            app.Published = item.PublishedDate;
-                            app.PodcastRss = pod.Rss_url;
-                            app.ThumbnailIconUrl = pod.ImageUrl;
-
-
-                            if (pod.ImageUrl == null)
-                            {
-
-                            }
-                            if (item.Summary != null && item.Summary.Text != "")
-                            {
-                                app.Discription = item.Summary.Text;
-                            }
-                            else
-                            {
-                                app.Discription = item.NodeValue;
-                            }
-
-                            foreach (var atrebute in item.ElementExtensions)
-                            {
-                                switch (atrebute.NodeName)
-                                {
-                                    case "duration":
-
-                                        try
-                                        {
-                                            double durationDouble;
-
-                                            if (!atrebute.NodeValue.Contains(':') && double.TryParse(atrebute.NodeValue, out durationDouble))
-                                            {
-                                                app.Total = ((int)durationDouble);
-                                            }
-                                            else
-                                            {
-                                                if (atrebute.NodeValue.Length <= 5 && atrebute.NodeValue.Contains(':'))
-                                                {
-                                                    TimeSpan span = new TimeSpan();
-                                                    TimeSpan.TryParseExact(atrebute.NodeValue, "mm\\:ss", null, out span);
-                                                    app.Total = ((int)span.TotalSeconds);
-                                                }
-                                                else
-                                                {
-                                                    app.Total = ((int)TimeSpan.Parse(atrebute.NodeValue).TotalSeconds);
-                                                }
-                                            }
-                                        }
-                                        catch
-                                        {
-                                            try
-                                            {
-                                                TimeSpan span = new TimeSpan();
-                                                TimeSpan.TryParseExact(atrebute.NodeValue, "mm\\:ss", null, out span);
-                                                app.Total = ((int)span.TotalSeconds);
-                                            }
-                                            catch
-                                            {
-
-                                            }
-                                        }
-                                        break;
-
-                                    case "image":
-
-                                        foreach (var elm in atrebute.AttributeExtensions)
-                                        {
-                                            if (elm.Name.Equals("href"))
-                                            {
-                                                app.ThumbnailIconUrl = elm.Value;
-                                            }
-                                        }
-                                        break;
-                                }
-                                
-                            }
-                            
-
-                            pod.PodcastApesodes.Add(app);
-                        }
-                        catch
-                        {
-
-                        }
-                    }
-                }
-                catch
-                {
-                }
-
-            }
-            catch
-            {
-
-            }
-            return pod;
         }
         public async void StartNextCloudConfig()
         {
@@ -558,7 +462,6 @@ Please don't close the app."
 
         }
 
-
         class continueUrlRegestration : ICommand
         {
             public event EventHandler CanExecuteChanged;
@@ -625,7 +528,11 @@ Please don't close the app."
             }
         }
 
-
+        public enum FeedContent
+        {
+            OnePodcast,
+            AllPodcasts
+        }
         private async void StackPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
         {
             var podcast = (sender as StackPanel).DataContext as Podcast;
@@ -633,8 +540,13 @@ Please don't close the app."
             //ApisodesList.Podcast = podcast;
             OnePodcastShowsList.podcast = podcast;
             var collection = new IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>(itemsPerPage: 50);
+
             //await collection.LoadMoreItemsAsync(50);
-            Frame.Navigate(typeof(ShowsFeed), collection);
+            var parm = new List<object>();
+            parm.Add(FeedContent.OnePodcast);
+            parm.Add(collection);
+            parm.Add(podcast);
+            Frame.Navigate(typeof(ShowsFeed), parm);
         }
 
         private async void refresh_button_Click(object sender, RoutedEventArgs e)
@@ -699,10 +611,10 @@ Please don't close the app."
         {
             App.MainWindow.WindowTitleText.Name = "Podcasts Feed";
             var collection = new IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>(itemsPerPage: 50);
-            //await collection.LoadMoreItemsAsync(50);
-            var showsAndPodcasts = new ObservableCollection<ShowAndPodcast>();
-
-            Frame.Navigate(typeof(ShowsFeed), collection);
+            var parm = new List<object>();
+            parm.Add(FeedContent.AllPodcasts);
+            parm.Add(collection);
+            Frame.Navigate(typeof(ShowsFeed), parm);
         }
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {

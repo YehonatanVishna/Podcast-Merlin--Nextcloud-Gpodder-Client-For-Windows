@@ -1,11 +1,16 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using System;
+using Windows.UI;
+using Windows.UI.WebUI;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Media;
 
 namespace PodMerForWinUi
 {
     public class PodcastApesode : ObservableObject
     {
+        private SolidColorBrush playColor = new SolidColorBrush( ShowsFeed.getRightColor());
+        private bool isPlaying;
         private int iD = 0;
         private int podcastID = 0;
         private string name = "";
@@ -69,6 +74,19 @@ namespace PodMerForWinUi
 
         public int Visual_state { get => visual_state; set => visual_state = value; }
         public Visibility Vis { get => visibility; set { SetProperty(ref visibility, value); } }
+
+        public SolidColorBrush PlayBrush
+        {
+            get
+            {
+                return playColor;
+            }
+            set
+            {
+                SetProperty(ref playColor, value);
+            }
+        }
+        public bool IsPlaying { get => isPlaying; set => SetProperty(ref isPlaying, value); }
 
         private int visual_state = 0;
         public bool equals(PodcastApesode show)

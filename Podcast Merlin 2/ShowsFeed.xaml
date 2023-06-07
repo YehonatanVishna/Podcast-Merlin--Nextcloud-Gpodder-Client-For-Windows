@@ -14,6 +14,8 @@
     NavigationCacheMode="Enabled"
      xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     >
+    <Page.Resources>
+    </Page.Resources>
 
     <Grid>
         <Grid.ColumnDefinitions>
@@ -21,16 +23,26 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
             <RowDefinition Height="5*"/>
         </Grid.RowDefinitions>
+        <StackPanel x:Name="ToolBar" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" FlowDirection="RightToLeft" >
+            <AppBarButton x:Name="Refresh_btn">
+                <SymbolIcon Symbol="Refresh"/>
+            </AppBarButton>
+        </StackPanel>
         <!--<ScrollViewer Grid.Row="0" Grid.Column="0" ViewChanged="ScrollViewer_ViewChanged">-->
-            <ListView FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
+            <ListView Grid.Row="1" FocusVisualPrimaryBrush="Cornsilk" winui:BackdropMaterial.ApplyToRootOrPageBackground="False" FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
                 <ListView.ItemsPanel>
                     <ItemsPanelTemplate>
                         <ItemsStackPanel Orientation="Vertical" HorizontalAlignment="Stretch"></ItemsStackPanel>
                     </ItemsPanelTemplate>
                 </ListView.ItemsPanel>
-                <ListView.ItemTemplate>
+            <ListView.Resources>
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#5555" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#6666" />
+            </ListView.Resources>
+            <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:ShowAndPodcast">
                             <RelativePanel FocusVisualPrimaryBrush="Transparent">
                             <Frame Margin="5,5,5,5" CornerRadius="10,10,10,10" x:Name="Thumbnail" RelativePanel.AlignLeftWithPanel="True" Width="75" Height="75" HorizontalAlignment="Left">
@@ -39,7 +51,7 @@
                             <TextBlock Margin="5,5,5,5" x:Name="ShowName"  RelativePanel.LeftOf="play_panel" RelativePanel.RightOf="Thumbnail" TextWrapping="Wrap" Text="{Binding Show.Name, Mode=OneWay}" />
                             <!--<TextBlock x:Name ="datePub"  RelativePanel.Below="ShowName" RelativePanel.AlignBottomWithPanel="True" RelativePanel.AlignLeftWith="ShowName" RelativePanel.AlignRightWith="ShowName" Text="{Binding Show.Published, Mode=OneWay}"/>-->
                             <RelativePanel x:Name="play_panel" RelativePanel.AlignRightWithPanel="True" RelativePanel.AlignVerticalCenterWithPanel="True">
-                                <winui:ProgressBar x:Name="PodcastProgress" RelativePanel.Below="Play_btn" RelativePanel.AlignRightWith="Play_btn"  RelativePanel.AlignLeftWith="Play_btn" Visibility="{Binding Show.Vis, Mode=OneTime}" IsIndeterminate="False" Maximum="{Binding Show.Total, Mode=OneWay}" Value="{Binding Show.Position, Mode=TwoWay, UpdateSourceTrigger=Default}"/>
+                            <winui:ProgressBar Foreground="{Binding Show.PlayBrush, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" x:Name="PodcastProgress" RelativePanel.Below="Play_btn" RelativePanel.AlignRightWith="Play_btn"  RelativePanel.AlignLeftWith="Play_btn" Visibility="{Binding Show.Vis, Mode=OneTime}" IsIndeterminate="False" Maximum="{Binding Show.Total, Mode=OneWay}" Value="{Binding Show.Position, Mode=TwoWay, UpdateSourceTrigger=Default}"/>
                                 <Button RelativePanel.AlignRightWithPanel="True" x:Name="Play_btn" HorizontalAlignment="Right" Click="Play_btn_Click">
                                     <SymbolIcon Symbol="Play"/>
                                 </Button>
@@ -48,25 +60,49 @@
                             </RelativePanel>
                     </DataTemplate>
                 </ListView.ItemTemplate>
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="HorizontalContentAlignment"  Value="Stretch"></Setter>
-                        <Setter Property="HorizontalAlignment"  Value="Stretch"></Setter>
-                        <Setter Property="FocusVisualPrimaryBrush" Value="Red"/>
-                    </Style>
-                </ListView.ItemContainerStyle>
             </ListView>
         <!--</ScrollViewer>-->
 
-        <Grid x:Name="show_ditailes_view" Grid.Column="1" DataContextChanged="show_ditailes_view_DataContextChanged">
+            <ScrollViewer x:Name="show_ditailes_view" Grid.Row="1" Grid.Column="1" DataContextChanged="show_ditailes_view_DataContextChanged">
+            <!--<ScrollViewer.Style>
+                <Style TargetType="ScrollViewer">
+                    <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+                    <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollViewer">
+                                <Grid Background="{TemplateBinding Background}">
+                                    <ScrollContentPresenter />
+                                    <ScrollBar x:Name="VerticalScrollBar"
+                               Visibility="Visible"
+                               Value="{TemplateBinding VerticalOffset}"
+                               Maximum="{TemplateBinding ScrollableHeight}"
+                               Orientation="Vertical"
+                               Width="12"
+                               Background="{ThemeResource SystemChromeMediumColor}"
+                               Foreground="{ThemeResource SystemChromeHighColor}" />
+                                    <ScrollBar x:Name="HorizontalScrollBar"
+                               Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"
+                               Value="{TemplateBinding HorizontalOffset}"
+                               Maximum="{TemplateBinding ScrollableWidth}"
+                               Orientation="Horizontal"
+                               Height="12"
+                               Background="{ThemeResource SystemChromeMediumColor}"
+                               Foreground="{ThemeResource SystemChromeHighColor}" />
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
 
-            <TextBlock>show notes:</TextBlock>
-            <winui:WebView2 Background="Transparent"
+            </ScrollViewer.Style>-->
+                <!--<TextBlock>show notes:</TextBlock>-->
+                <winui:WebView2 Background="Transparent"
                       IsRightTapEnabled="False"
                       x:Name="show_notes_box"  
-                      Visibility="Visible" 
-                     
+                      Visibility="Visible"                      
                       ></winui:WebView2>
-        </Grid>
+            </ScrollViewer>
+
     </Grid>
 </Page>
