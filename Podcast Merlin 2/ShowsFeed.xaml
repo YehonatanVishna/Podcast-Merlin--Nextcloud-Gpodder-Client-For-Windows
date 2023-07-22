@@ -49,7 +49,8 @@
                                 <winui:ImageIcon  Source="{Binding Show.ThumbnailIconUrl}" />
                             </Frame>
                             <TextBlock Margin="5,5,5,5" x:Name="ShowName"  RelativePanel.LeftOf="play_panel" RelativePanel.RightOf="Thumbnail" TextWrapping="Wrap" Text="{Binding Show.Name, Mode=OneWay}" />
-                            <!--<TextBlock x:Name ="datePub"  RelativePanel.Below="ShowName" RelativePanel.AlignBottomWithPanel="True" RelativePanel.AlignLeftWith="ShowName" RelativePanel.AlignRightWith="ShowName" Text="{Binding Show.Published, Mode=OneWay}"/>-->
+                        <TextBlock x:Name="ShowDate" FontSize="12"  RelativePanel.Below="ShowName" RelativePanel.RightOf="Thumbnail" HorizontalAlignment="Left" Text="{Binding Show.FormattedPublishedDate}"/>
+                        <!--<TextBlock x:Name ="datePub"  RelativePanel.Below="ShowName" RelativePanel.AlignBottomWithPanel="True" RelativePanel.AlignLeftWith="ShowName" RelativePanel.AlignRightWith="ShowName" Text="{Binding Show.Published, Mode=OneWay}"/>-->
                             <RelativePanel x:Name="play_panel" RelativePanel.AlignRightWithPanel="True" RelativePanel.AlignVerticalCenterWithPanel="True">
                             <winui:ProgressBar Foreground="{Binding Show.PlayBrush, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" x:Name="PodcastProgress" RelativePanel.Below="Play_btn" RelativePanel.AlignRightWith="Play_btn"  RelativePanel.AlignLeftWith="Play_btn" Visibility="{Binding Show.Vis, Mode=OneTime}" IsIndeterminate="False" Maximum="{Binding Show.Total, Mode=OneWay}" Value="{Binding Show.Position, Mode=TwoWay, UpdateSourceTrigger=Default}"/>
                                 <Button RelativePanel.AlignRightWithPanel="True" x:Name="Play_btn" HorizontalAlignment="Right" Click="Play_btn_Click">

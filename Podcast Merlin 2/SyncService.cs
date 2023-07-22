@@ -61,7 +61,11 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 all = Newtonsoft.Json.JsonConvert.DeserializeObject(res, typeof(ActionsResponse)) as ActionsResponse;
                 foreach (var action in all.actions)
                 {
-                    await ActionsDb.add(action);
+                    try
+                    {
+                        await ActionsDb.add(action);
+                    }
+                    catch { }
                 }
                 localSettings.Values["last_checked_actions_timestamp"] = all.timestamp;
                 await ShowsDb.initAsync();

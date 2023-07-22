@@ -1,5 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using Podcast_Merlin_Uwp;
 using System;
+using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.WebUI;
 using Windows.UI.Xaml;
@@ -9,7 +11,7 @@ namespace PodMerForWinUi
 {
     public class PodcastApesode : ObservableObject
     {
-        private SolidColorBrush playColor = new SolidColorBrush( ShowsFeed.getRightColor());
+        private SolidColorBrush playColor ;
         private bool isPlaying;
         private int iD = 0;
         private int podcastID = 0;
@@ -24,9 +26,26 @@ namespace PodMerForWinUi
         private int started = 0;
         private int total = 0;
         public Visibility visibility= Visibility.Collapsed;
-
+        public static SolidColorBrush DefaultColor;
+        private static bool hasCalcColor =false;
         public PodcastApesode()
         {
+            if (!hasCalcColor)
+            {
+                var ts = Task.Run(async () => { return await ShowsFeed.getRightColor(); });
+                ts.Wait();
+                var tsk = App.MainWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+                {
+                    playColor = new SolidColorBrush(ts.Result);
+                });
+                tsk.AsTask().Wait();
+                DefaultColor = playColor;
+                hasCalcColor = true;
+            }
+            else
+            {
+                playColor = DefaultColor;
+            }
         }
 
         public string Name { get => name; set { SetProperty(ref name, value); } }
@@ -89,6 +108,21 @@ namespace PodMerForWinUi
         public bool IsPlaying { get => isPlaying; set => SetProperty(ref isPlaying, value); }
 
         private int visual_state = 0;
+        public string getFullNumberString(int a)
+        {
+            if (a < 9 && a>=0) {
+                return "0" + a.ToString();
+            }
+            return a.ToString();
+        }
+        public string FormattedPublishedDate
+        {
+            get
+            {
+                return $@"{getFullNumberString(published.Day)}/{getFullNumberString(published.Month)}/{getFullNumberString(published.Year)}
+{getFullNumberString(published.Hour)}:{getFullNumberString(published.Minute)}";
+            }
+        }
         public bool equals(PodcastApesode show)
         {
             bool playS = playUrl.Equals(show.playUrl);

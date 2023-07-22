@@ -48,35 +48,30 @@ namespace PodMerForWinUi
 
         protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
-
-            //apesode_ListView.ItemsSource = e.Parameter;
-            //ls = e.Parameter;
-
-            //if(ls is IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)
-            //    {
-            //        await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ls).LoadMoreItemsAsync(100);
-            //    }
-            //    else
-            //    {
-            //        if(ls is IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>)
-            //        {
-            //            await (ls as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
-            //        }
-            //    }
             
             var ParameterList = e.Parameter as List<object>;
             apesode_ListView.ItemsSource = ParameterList[1];
             var PageType = (FeedContent) ParameterList.FirstOrDefault();
             if(PageType == FeedContent.AllPodcasts)
             {
-                await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ParameterList[1]).LoadMoreItemsAsync(100);
+                App.MainWindow.WindowTitleText.Name = "podcast feed";
+                await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ParameterList[1]).LoadMoreItemsAsync(10);
                 
             }
             else
             {
                 if(PageType == FeedContent.OnePodcast)
                 {
-                    await (ParameterList[1] as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+                    try
+                    {
+                        await (ParameterList[1] as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).LoadMoreItemsAsync(100);
+                        App.MainWindow.WindowTitleText.Name = (ParameterList[1] as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).FirstOrDefault().Podcast.Name;
+
+                    }
+                    catch
+                    {
+
+                    }
                     feedContent = ParameterList[2];
                 }
             }
@@ -84,6 +79,7 @@ namespace PodMerForWinUi
             Refresh_btn.Command = new Refresh_Btn_Command();
             Refresh_btn.CommandParameter = this;
             apesode_ListView.SelectedIndex = 0;
+            //(ParameterList[1] as IncrementalLoadingCollection<AllPodcastsShowsList, object>).LoadMoreItems(15);
         }
         class Refresh_Btn_Command : ICommand
         {
@@ -134,7 +130,7 @@ namespace PodMerForWinUi
                         lastSyncTask = task;
                     }
                     );
-                    pod.Show.PlayBrush = new SolidColorBrush( getRightColor());
+                    pod.Show.PlayBrush = new SolidColorBrush( await getRightColor());
                     pod.Show.IsPlaying = false;
                     if (update_position_dispach_timer != null)
                     {
@@ -198,15 +194,19 @@ namespace PodMerForWinUi
         public ulong lastNav = 0;
         public ulong lastNav2 = 0;
 
-        public static Color getRightColor()
+        public static async Task<Color> getRightColor()
         {
-            var linkColor = (Color)(Application.Current.Resources["SystemAccentColor"]);
-            if (App.Current.RequestedTheme == ApplicationTheme.Dark)
-                linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight2"]);
-            else
-            {
-                linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark2"]);
-            }
+            Color linkColor;
+            await App.MainWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => {
+                linkColor = (Color)(Application.Current.Resources["SystemAccentColor"]);
+                if (App.Current.RequestedTheme == ApplicationTheme.Dark)
+                    linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight2"]);
+                else
+                {
+                    linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark2"]);
+                }
+            });
+
             return linkColor;
         }
         private async void apesode_ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -220,7 +220,7 @@ namespace PodMerForWinUi
                 var Forground_color = (show_notes_box.Foreground as SolidColorBrush).Color;
                 textColor = $"rgb({Forground_color.R},{Forground_color.G}, {Forground_color.B})";
                 var backColor = (Application.Current.Resources["ApplicationPageBackgroundThemeBrush"] as SolidColorBrush).Color;
-                var linkColor = getRightColor();
+                var linkColor = await getRightColor();
                 var showNotesHtml = $@"
 <html>
 <head></head>
