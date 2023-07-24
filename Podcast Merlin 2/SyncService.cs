@@ -79,8 +79,11 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 {
                     try
                     {
-                            NoneQury += $@" Update PodcastShows set position = {action.position} where PlayUrl = '{Sql.ExtraFunctions.reparse_string( action.episode)}' ;";
-
+                        NoneQury += $@" Update PodcastShows set position = {action.position} where PlayUrl = '{Sql.ExtraFunctions.reparse_string( action.episode)}' ;";
+                        var cmd = new SqliteCommand(NoneQury, ShowsDb.sqldb);
+                        var result = cmd.ExecuteNonQuery();
+                        NoneQury = "";
+                        var a = 11;
                     }
                     catch
                     {
@@ -90,8 +93,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 
                 try
                 {
-                    var cmd = new SqliteCommand(NoneQury, ShowsDb.sqldb);
-                    var result = cmd.ExecuteNonQuery();
+                    
                 }
                 catch
                 {
