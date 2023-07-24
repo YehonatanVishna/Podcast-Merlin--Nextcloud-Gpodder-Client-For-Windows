@@ -43,6 +43,7 @@ namespace PodMerForWinUi
         public ShowsFeed()
         {
             this.InitializeComponent();
+            
         }
 
 
@@ -397,6 +398,16 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
             if (args.ItemIndex == apesode_ListView.Items.Count - 10)
             {
                 await apesode_ListView.LoadMoreItemsAsync();
+            }
+        }
+
+        private void Refresh_btn_Click(object sender, RoutedEventArgs e)
+        {
+            refresh_indecator.IsActive = true;
+            if(feedContentType == FeedContent.OnePodcast)
+            {
+                var podcast = feedContent as Podcast;
+
             }
         }
     }

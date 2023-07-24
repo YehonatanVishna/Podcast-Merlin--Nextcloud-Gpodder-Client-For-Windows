@@ -1,11 +1,14 @@
 ﻿using PodMerForWinUi;
 using System;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
+using Windows.UI;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
 namespace Podcast_Merlin_Uwp
@@ -103,6 +106,18 @@ namespace Podcast_Merlin_Uwp
             //TODO: Save application state and stop any background activity
             deferral.Complete();
         }
+        public static SolidColorBrush textColor
+        {
+            get
+            {
+                if (App.Current.RequestedTheme == ApplicationTheme.Dark)
+                {
+                    var a= new SolidColorBrush( Colors.White);
+                    return a;
+                }
+                return new SolidColorBrush( new Windows.UI.Color() { R = 0, G = 0, B = 0 });
 
+            }
+        }
     }
 }

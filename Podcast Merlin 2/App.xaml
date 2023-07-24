@@ -5,6 +5,19 @@
     xmlns:local="using:Podcast_Merlin_Uwp">
     <Application.Resources>
         <ResourceDictionary>
+
+            <!-- Default resources for light mode -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <!-- Place your default light mode resources here -->
+                    <SolidColorBrush x:Key="TextBoxForegroundThemeBrush" Color="Black" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <!-- Place your default dark mode resources here -->
+                    <SolidColorBrush x:Key="TextBoxForegroundThemeBrush" Color="White" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <!-- Other merged dictionaries here -->

@@ -9,12 +9,25 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:winui="using:Microsoft.UI.Xaml.Controls"
+    xmlns:app ="using:Podcast_Merlin_Uwp" 
     mc:Ignorable="d"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
     NavigationCacheMode="Enabled"
      xmlns:controls="using:Microsoft.Toolkit.Uwp.UI.Controls"
     >
     <Page.Resources>
+        <Style x:Key="ListViewItemContainerStyle1" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style x:Key="ListViewItemContainerStyle2" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style x:Key="TextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource ApplicationForegroundThemeBrush}"/>
+        </Style>
     </Page.Resources>
 
     <Grid>
@@ -27,12 +40,14 @@
             <RowDefinition Height="5*"/>
         </Grid.RowDefinitions>
         <StackPanel x:Name="ToolBar" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" FlowDirection="RightToLeft" >
-            <AppBarButton x:Name="Refresh_btn">
-                <SymbolIcon Symbol="Refresh"/>
+            <AppBarButton x:Name="Refresh_btn" Click="Refresh_btn_Click">
+                <SymbolIcon  x:Name="refresh_page_content" Symbol="Refresh"/>
+                
             </AppBarButton>
+            <winui:ProgressRing x:Name="refresh_indecator" ></winui:ProgressRing>
         </StackPanel>
         <!--<ScrollViewer Grid.Row="0" Grid.Column="0" ViewChanged="ScrollViewer_ViewChanged">-->
-            <ListView Grid.Row="1" FocusVisualPrimaryBrush="Cornsilk" winui:BackdropMaterial.ApplyToRootOrPageBackground="False" FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
+            <ListView ItemContainerStyle="{StaticResource ListViewItemContainerStyle2}" Grid.Row="1" FocusVisualPrimaryBrush="Cornsilk" winui:BackdropMaterial.ApplyToRootOrPageBackground="False" FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
                 <ListView.ItemsPanel>
                     <ItemsPanelTemplate>
                         <ItemsStackPanel Orientation="Vertical" HorizontalAlignment="Stretch"></ItemsStackPanel>
@@ -40,7 +55,12 @@
                 </ListView.ItemsPanel>
             <ListView.Resources>
                 <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#5555" />
-                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#6666" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#5555" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#6666" />
+                <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#4444" />
+                <SolidColorBrush x:Key="ListViewItemForgroundSelected" Color="White" />
+                <SolidColorBrush x:Key="ListViewItemFocusVisualPrimaryBrush" Color="White" />
+
             </ListView.Resources>
             <ListView.ItemTemplate>
                     <DataTemplate x:DataType="local:ShowAndPodcast">
@@ -48,8 +68,12 @@
                             <Frame Margin="5,5,5,5" CornerRadius="10,10,10,10" x:Name="Thumbnail" RelativePanel.AlignLeftWithPanel="True" Width="75" Height="75" HorizontalAlignment="Left">
                                 <winui:ImageIcon  Source="{Binding Show.ThumbnailIconUrl}" />
                             </Frame>
-                            <TextBlock Margin="5,5,5,5" x:Name="ShowName"  RelativePanel.LeftOf="play_panel" RelativePanel.RightOf="Thumbnail" TextWrapping="Wrap" Text="{Binding Show.Name, Mode=OneWay}" />
-                        <TextBlock x:Name="ShowDate" FontSize="12"  RelativePanel.Below="ShowName" RelativePanel.RightOf="Thumbnail" HorizontalAlignment="Left" Text="{Binding Show.FormattedPublishedDate}"/>
+                        <TextBlock Margin="5,5,5,5" x:Name="ShowName" Style="{StaticResource TextStyle}"  RelativePanel.LeftOf="play_panel" RelativePanel.RightOf="Thumbnail" TextWrapping="Wrap" Text="{Binding Show.Name, Mode=OneWay}" />
+                        <TextBlock x:Name="ShowDate" FontSize="12" Style="{StaticResource TextStyle}" RelativePanel.Below="ShowName" RelativePanel.RightOf="Thumbnail" HorizontalAlignment="Left" Text="{Binding Show.FormattedPublishedDate}">
+                            <!--<TextBlock.Resources>
+                                <SolidColorBrush x:Key="Forground" Color="{x:Bind app:App.textColor}"/>
+                            </TextBlock.Resources>-->
+                        </TextBlock>
                         <!--<TextBlock x:Name ="datePub"  RelativePanel.Below="ShowName" RelativePanel.AlignBottomWithPanel="True" RelativePanel.AlignLeftWith="ShowName" RelativePanel.AlignRightWith="ShowName" Text="{Binding Show.Published, Mode=OneWay}"/>-->
                             <RelativePanel x:Name="play_panel" RelativePanel.AlignRightWithPanel="True" RelativePanel.AlignVerticalCenterWithPanel="True">
                             <winui:ProgressBar Foreground="{Binding Show.PlayBrush, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" x:Name="PodcastProgress" RelativePanel.Below="Play_btn" RelativePanel.AlignRightWith="Play_btn"  RelativePanel.AlignLeftWith="Play_btn" Visibility="{Binding Show.Vis, Mode=OneTime}" IsIndeterminate="False" Maximum="{Binding Show.Total, Mode=OneWay}" Value="{Binding Show.Position, Mode=TwoWay, UpdateSourceTrigger=Default}"/>
@@ -61,7 +85,7 @@
                             </RelativePanel>
                     </DataTemplate>
                 </ListView.ItemTemplate>
-            </ListView>
+        </ListView>
         <!--</ScrollViewer>-->
 
             <ScrollViewer x:Name="show_ditailes_view" Grid.Row="1" Grid.Column="1" DataContextChanged="show_ditailes_view_DataContextChanged">

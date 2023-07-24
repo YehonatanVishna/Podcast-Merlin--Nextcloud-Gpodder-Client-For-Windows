@@ -281,7 +281,7 @@ Podcasts.Add(item);
             }
             return conds >= 4;
         }
-        public static async Task saveToDb(ObservableCollection<Podcast> Pods_new, ObservableCollection<Podcast> Pods_old)
+        public static async Task saveToDbAllShowsAndPodcasts(ObservableCollection<Podcast> Pods_new, ObservableCollection<Podcast> Pods_old)
         {
             var ShowList = new List<PodcastApesode>();
             foreach (var pod in Pods_new)
@@ -372,7 +372,7 @@ Podcasts.Add(item);
             }
             Task.WaitAll(Tasks.ToArray());
 
-            await saveToDb(Pods_new: newPods, Pods_old: Pods);
+            await saveToDbAllShowsAndPodcasts(Pods_new: newPods, Pods_old: Pods);
 
             Newtonsoft.Json.JsonSerializer jsonSerializer = new Newtonsoft.Json.JsonSerializer()
             {

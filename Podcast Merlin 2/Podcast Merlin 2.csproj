@@ -23,9 +23,9 @@
     <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundle>Always</AppxBundle>
-    <AppxBundlePlatforms>x86|x64|arm|arm64</AppxBundlePlatforms>
+    <AppxBundlePlatforms>x86|x64|arm64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <PackageCertificateThumbprint>0328947A57DC17FC5746808A5A1D4285BC8F960D</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>19F22C9E21E224975C37C6DA35EECAF4CA2FFB71</PackageCertificateThumbprint>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <PackageCertificateKeyFile />
   </PropertyGroup>
@@ -155,7 +155,7 @@
     <Compile Include="ShowsFeed.xaml.cs">
       <DependentUpon>ShowsFeed.xaml</DependentUpon>
     </Compile>
-    <Compile Include="SqlLitePodcasts - Copy.cs" />
+    <Compile Include="SqlLiteActions.cs" />
     <Compile Include="SqlLitePodcasts.cs" />
     <Compile Include="SqlLitePodcastShows.cs" />
     <Compile Include="SyncService.cs" />
