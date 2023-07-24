@@ -40,7 +40,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
             }
 
         }
-        public static async Task<ActionsResponse> get_actions_and_put_them_on_file()
+        public static async Task<ActionsResponse> get_actions_and_put_them_on_file(bool isAfterFullRefresh= true)
         {
             await ActionsDb.init();
             ActionsResponse all;
@@ -59,26 +59,38 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 }
                 var ser = new Newtonsoft.Json.JsonSerializer();
                 all = Newtonsoft.Json.JsonConvert.DeserializeObject(res, typeof(ActionsResponse)) as ActionsResponse;
+                
                 foreach (var action in all.actions)
                 {
                     try
                     {
-                        await ActionsDb.add(action);
+                        if(isAfterFullRefresh)
+                            await ActionsDb.add(action);
                     }
                     catch { }
                 }
-                localSettings.Values["last_checked_actions_timestamp"] = all.timestamp;
+                if (isAfterFullRefresh)
+                    localSettings.Values["last_checked_actions_timestamp"] = all.timestamp;
                 await ShowsDb.initAsync();
                 string NoneQury = "";
+
+                ShowsDb.sqldb.Open();
                 foreach (var action in all.actions)
                 {
-                    NoneQury += $@" Update PodcastShows set position = {action.position} where PlayUrl = '{action.episode}' ;";
+                    try
+                    {
+                            NoneQury += $@" Update PodcastShows set position = {action.position} where PlayUrl = '{Sql.ExtraFunctions.reparse_string( action.episode)}' ;";
 
+                    }
+                    catch
+                    {
+
+                    }
                 }
-                ShowsDb.sqldb.Open();
-                var cmd = new SqliteCommand(NoneQury, ShowsDb.sqldb);
+                
                 try
                 {
+                    var cmd = new SqliteCommand(NoneQury, ShowsDb.sqldb);
                     var result = cmd.ExecuteNonQuery();
                 }
                 catch
@@ -165,7 +177,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 dictrequst
             };
             var requstContent = System.Net.Http.Json.JsonContent.Create(ls, typeof(List<Dictionary<string, object>>));
-            var task = is_connected_to_users_server();
+            var task = Task.Run(async ()=> { return await is_connected_to_users_server(); });
             task.Wait(4000);
             bool isCon = false;
             if (!task.IsCompleted)

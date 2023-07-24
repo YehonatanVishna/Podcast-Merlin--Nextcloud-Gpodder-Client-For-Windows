@@ -232,7 +232,21 @@ delete from Podcasts where RssUrl = '{rssFeedUrl}';
             }
         }
 
-
+        public async Task<Podcast> get_podcast_by_id(int id)
+        {
+            await init();
+            var qury = "select * from Podcasts where ID =" + id;
+            SqliteCommand comd = new SqliteCommand(qury, sqldb);
+            sqldb.Open();
+            var reader = await comd.ExecuteReaderAsync();
+            var dt = new DataTable();
+            dt.Load(reader);
+            var pod = Podcast.parse_row(dt.Rows[0]);
+            var ShowDb = new SqlLitePodcastsShows();
+            await ShowDb.initAsync();
+            pod.PodcastApesodes = await ShowDb.get_all_shows_for_Podcast(pod);
+            return pod;
+        }
         public async Task save_to_db_one_podcast_and_all_its_shows(Podcast new_pod, Podcast old_pod)
         {
             var ShowList = new List<PodcastApesode>();

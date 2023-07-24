@@ -317,9 +317,10 @@ Go over to " });
                 richTextBlock.Inlines.Add(hyper);
                 richTextBlock.Inlines.Add(new Run() { Text = @", select Webo.hosting as your provider and create your own private syncing account." });
                 father.Children.Add(richTextBlock);
-                var getUrl = new ContentDialog() { Title = "please enter the adress of your nextcloud instance", CloseButtonText = "cancel", SecondaryButtonText = "ok", SecondaryButtonCommandParameter = urlTextBox, Content = father };
+                var getUrl = new ContentDialog() { Title = "please enter the adress of your nextcloud instance", SecondaryButtonText = "Enter", SecondaryButtonCommandParameter = urlTextBox, Content = father };
                 getUrl.DataContext = urlTextBox;
                 getUrl.SecondaryButtonClick += GetUrl_SecondaryButtonClick;
+                getUrl.KeyDown += GetUrl_KeyDown;
                 await getUrl.ShowAsync();
             check_again:
                 if (Server_Details != null && Server_Details.login_url != "" && Server_Details.login_url != null)
@@ -338,7 +339,20 @@ Go over to " });
             }
         }
 
+        private void GetUrl_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if(e.Key == Windows.System.VirtualKey.Enter)
+            {
+                (sender as ContentDialog).Hide();
+                getUrlStarted(sender as ContentDialog);
+            }
+        }
+
         private async void GetUrl_SecondaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            getUrlStarted(sender);
+        }
+        private async void getUrlStarted(ContentDialog sender)
         {
             try
             {
@@ -379,10 +393,20 @@ Go over to " });
                 MainPage.Server_Details.poll_url = poll_url;
                 MainPage.Server_Details.token = token;
             }
-            catch(Exception e)
+            catch (Exception e)
             {
-                (new ContentDialog { Title = "We Couldn't Complete Setup", Content = e.Message, CloseButtonText="ok" }).ShowAsync();
+                sender.Hide();
+                var error = (new ContentDialog { Title = "We Couldn't Complete Setup", Content = e.Message, CloseButtonText = "Retry" });
+                error.CloseButtonClick += Error_CloseButtonClick;
+                await error.ShowAsync();
             }
+        }
+
+        private void Error_CloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            sender.Hide();
+            StartNextCloudConfig();
+            
         }
 
         private async void WebWindowLogin_NavigationCompleted(WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)

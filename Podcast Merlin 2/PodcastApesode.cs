@@ -33,7 +33,7 @@ namespace PodMerForWinUi
         {
             if (!hasCalcColor)
             {
-                var ts = Task.Run(async () => { return await ShowsFeed.getRightColor(); });
+                var ts = Task.Run(async () => { return await ShowsFeed.getRightColor(0); });
                 ts.Wait();
                 var tsk = App.MainWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
                 {

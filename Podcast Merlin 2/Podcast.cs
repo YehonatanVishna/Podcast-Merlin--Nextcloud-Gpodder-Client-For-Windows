@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -10,6 +11,15 @@ namespace PodMerForWinUi
     public class Podcast
     {
         public Podcast() { }
+        public static Podcast parse_row(DataRow row)
+        {
+            var podcast = new Podcast();
+            podcast.ID = int.Parse(row["ID"].ToString());
+            podcast.ImageUrl = row["ImageUrl"].ToString();
+            podcast.Name = row["Name"].ToString();
+            podcast.Rss_url = row["RssUrl"].ToString();
+            return podcast;
+        }
         private string imageUrl = "";
         private string name = "";
         private string rss_url = "";

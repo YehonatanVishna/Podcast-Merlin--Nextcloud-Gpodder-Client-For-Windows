@@ -139,7 +139,7 @@ namespace PodMerForWinUi
                             lastSyncTask = task;
                         }
                         );
-                        pod.Show.PlayBrush = new SolidColorBrush(await getRightColor());
+                        pod.Show.PlayBrush = new SolidColorBrush(await getRightColor(0));
                         pod.Show.IsPlaying = false;
                         if (update_position_dispach_timer != null)
                         {
@@ -188,7 +188,7 @@ namespace PodMerForWinUi
                 {
                     MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, 0);
                 }
-                show.PlayBrush = new SolidColorBrush(Colors.ForestGreen);
+                show.PlayBrush = new SolidColorBrush(await getRightColor(3)) ;
                 show.IsPlaying = true;
                 var a = (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as Panel).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
                 a.Visibility = Visibility.Visible;
@@ -209,16 +209,27 @@ namespace PodMerForWinUi
         public ulong lastNav = 0;
         public ulong lastNav2 = 0;
 
-        public static async Task<Color> getRightColor()
+        public static async Task<Color> getRightColor(int level=2)
         {
             Color linkColor;
             await App.MainWindow.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => {
                 linkColor = (Color)(Application.Current.Resources["SystemAccentColor"]);
-                if (App.Current.RequestedTheme == ApplicationTheme.Dark)
-                    linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight2"]);
-                else
+                if (level != 0)
                 {
-                    linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark2"]);
+                    if (App.Current.RequestedTheme == ApplicationTheme.Dark)
+                    {
+                        if (level > 0)
+                            linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight" + level]);
+                        else
+                            linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark" + -1 * level]);
+                    }
+                    else
+                    {
+                        if (level > 0)
+                            linkColor = (Color)(Application.Current.Resources["SystemAccentColorDark" +  level]);
+                        else
+                            linkColor = (Color)(Application.Current.Resources["SystemAccentColorLight" + -1 * level]);
+                    }
                 }
             });
 
@@ -423,13 +434,16 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                 {
                     refresh_indecator.IsActive = true;
                 });
+                
                 if (feedContentType == FeedContent.OnePodcast)
                 {
-                    var podcast = feedContent as Podcast;
-                    var newPod = await Podcast.get_podcast_from_url_string(podcast.Rss_url);
                     var PodsDb = new Sql.SqlLite.SqlLitePodcasts();
                     await PodsDb.init();
+                    var podcast = await PodsDb.get_podcast_by_id( (feedContent as Podcast).ID);
+                    var newPod = await Podcast.get_podcast_from_url_string(podcast.Rss_url);
+
                     await PodsDb.save_to_db_one_podcast_and_all_its_shows(newPod, podcast);
+                    await Sync.SyncService.get_actions_and_put_them_on_file(false);
                     await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
                     {
                         await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).RefreshAsync();
@@ -440,6 +454,7 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                     if (feedContentType == FeedContent.AllPodcasts)
                     {
                         await MainWindow.mainPage.pull_new_info_about_podcast_put_on_file(MainPage.Podcasts);
+                        await Sync.SyncService.get_actions_and_put_them_on_file();
                         await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
                         {
                             await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>).RefreshAsync();

@@ -9,8 +9,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage;
+using PodMerForWinUi.Sql;
 
-namespace PodMerForWinUi.Sql.SqlLite
+namespace PodMerForWinUi.Sql
 {
     public static class ExtraFunctions
     {
@@ -18,9 +19,12 @@ namespace PodMerForWinUi.Sql.SqlLite
         //{
         //    return str.Replace("'", "''");
         //}
-        public static Func<string, string> reparse_string = str => str.Replace("'", "''");
+        public static Func<string, string> reparse_string = str => { str = str.Replace("'", "''"); str = str.Replace("%", "\\%"); return str; };
         public static Func<DateTimeOffset, string> reparseTime = time => time.DateTime.ToString("yyyy-MM-dd HH:mm:ss");
     }
+}
+namespace PodMerForWinUi.Sql.SqlLite
+{
     public class SqlLitePodcastsShows
     {
         public SqliteConnection sqldb;
