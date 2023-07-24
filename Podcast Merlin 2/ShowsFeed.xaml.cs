@@ -40,6 +40,7 @@ namespace PodMerForWinUi
         public object ls;
         public FeedContent feedContentType;
         public object feedContent;
+        public object pageIncrementalLoadingSorce;
         public ShowsFeed()
         {
             this.InitializeComponent();
@@ -52,6 +53,7 @@ namespace PodMerForWinUi
             
             var ParameterList = e.Parameter as List<object>;
             apesode_ListView.ItemsSource = ParameterList[1];
+            pageIncrementalLoadingSorce = ParameterList[1];
             var PageType = (FeedContent) ParameterList.FirstOrDefault();
             if(PageType == FeedContent.AllPodcasts)
             {
@@ -105,86 +107,98 @@ namespace PodMerForWinUi
         private DispatcherTimer update_position_dispach_timer;
         private async void playShow(ShowAndPodcast PodcastAndShow)
         {
-            var show = PodcastAndShow.Show;
-            var podcast = PodcastAndShow.Podcast;
-            apesode_ListView.SelectedItem = (show as PodcastApesode);
-            MainWindow.mediaPlayer_with_poster.ImageUrl = show.ThumbnailIconUrl;
-            MainWindow.mediaPlayer_with_poster.Track_name = (show as PodcastApesode).Name;
-            if (MainWindow.mediaPlayer_with_poster.ShowLastPlayed != null)
+            try
             {
-                try
+                var show = PodcastAndShow.Show;
+                var podcast = PodcastAndShow.Podcast;
+                if(show.PlayUrl ==null || show.PlayUrl == "")
                 {
-                    MainWindow.mediaPlayer_with_poster.ShowLastPlayed.Show.Position = (int)Math.Round(MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position.TotalSeconds);
-                    var pod = MainWindow.MediaPlayer.DataContext as ShowAndPodcast;
-                    var pos = (int)Math.Round(MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position.TotalSeconds);
-                    Task.Run(() =>
+                    throw new Exception("show doesnt have a play url");
+                }
+                apesode_ListView.SelectedItem = (show as PodcastApesode);
+                MainWindow.mediaPlayer_with_poster.ImageUrl = show.ThumbnailIconUrl;
+                MainWindow.mediaPlayer_with_poster.Track_name = (show as PodcastApesode).Name;
+                if (MainWindow.mediaPlayer_with_poster.ShowLastPlayed != null)
+                {
+                    try
                     {
-                        if (lastSyncTask != null)
+                        MainWindow.mediaPlayer_with_poster.ShowLastPlayed.Show.Position = (int)Math.Round(MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position.TotalSeconds);
+                        var pod = MainWindow.MediaPlayer.DataContext as ShowAndPodcast;
+                        var pos = (int)Math.Round(MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position.TotalSeconds);
+                        Task.Run(() =>
                         {
-                            lastSyncTask.Wait();
+                            if (lastSyncTask != null)
+                            {
+                                lastSyncTask.Wait();
+                            }
+                            var task = Task.Run(async () =>
+                            {
+
+                                await Sync.SyncService.SendAction(pod, pos);
+                            });
+                            lastSyncTask = task;
                         }
-                        var task = Task.Run(async () =>
+                        );
+                        pod.Show.PlayBrush = new SolidColorBrush(await getRightColor());
+                        pod.Show.IsPlaying = false;
+                        if (update_position_dispach_timer != null)
                         {
+                            update_position_dispach_timer.Stop();
+                        }
 
-                            await Sync.SyncService.SendAction(pod, pos);
-                        });
-                        lastSyncTask = task;
                     }
-                    );
-                    pod.Show.PlayBrush = new SolidColorBrush( await getRightColor());
-                    pod.Show.IsPlaying = false;
-                    if (update_position_dispach_timer != null)
+                    catch (System.NullReferenceException e)
                     {
-                        update_position_dispach_timer.Stop();
+
                     }
-
                 }
-                catch (System.NullReferenceException e)
+                update_position_dispach_timer = new DispatcherTimer();
+                update_position_dispach_timer.Interval = new TimeSpan(0, 0, 1);
+                update_position_dispach_timer.Tick += Update_position_dispach_timer_Tick;
+                update_position_dispach_timer.Start();
+
+
+
+                MainWindow.mediaPlayer_with_poster.Initialise_media_player();
+                var sorce = new MediaPlaybackItem(MediaSource.CreateFromUri(new System.Uri(show.PlayUrl)));
+                MediaItemDisplayProperties props = (sorce).GetDisplayProperties();
+                props.Type = Windows.Media.MediaPlaybackType.Music;
+                props.MusicProperties.Title = show.Name;
+                props.MusicProperties.Artist = podcast.Name;
+                props.Thumbnail = RandomAccessStreamReference.CreateFromUri(new System.Uri(show.ThumbnailIconUrl));
+                props.MusicProperties.Genres.Add("Podcast");
+                (sorce).ApplyDisplayProperties(props);
+
+                MainWindow.MediaPlayer.Source = sorce;
+                var playurl = (show).PlayUrl;
+                MainWindow.MediaPlayer.DataContext = PodcastAndShow;
+                MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, show.Position);
+                if (show.Total <= 0)
                 {
-
+                check:
+                    if (MainWindow.mediaPlayer_with_poster.Player.MediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds != 0)
+                        show.Total = (int)MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds;
+                    else
+                    {
+                        await Task.Delay(50);
+                        goto check;
+                    }
                 }
-            }
-            update_position_dispach_timer = new DispatcherTimer();
-            update_position_dispach_timer.Interval = new TimeSpan(0, 0, 1);
-            update_position_dispach_timer.Tick += Update_position_dispach_timer_Tick;
-            update_position_dispach_timer.Start();
-
-
-
-            MainWindow.mediaPlayer_with_poster.Initialise_media_player();
-            var sorce = new MediaPlaybackItem(MediaSource.CreateFromUri(new System.Uri(show.PlayUrl)));
-            MediaItemDisplayProperties props = (sorce).GetDisplayProperties();
-            props.Type = Windows.Media.MediaPlaybackType.Music;
-            props.MusicProperties.Title = show.Name;
-            props.MusicProperties.Artist = podcast.Name;
-            props.Thumbnail = RandomAccessStreamReference.CreateFromUri(new System.Uri(show.ThumbnailIconUrl));
-            props.MusicProperties.Genres.Add("Podcast");
-            (sorce).ApplyDisplayProperties(props);
-
-            MainWindow.MediaPlayer.Source = sorce;
-            var playurl = (show).PlayUrl;
-            MainWindow.MediaPlayer.DataContext = PodcastAndShow;
-            MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, show.Position);
-            if (show.Total <= 0)
-            {
-            check:
-                if (MainWindow.mediaPlayer_with_poster.Player.MediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds != 0)
-                    show.Total = (int)MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds;
-                else
+                if (show.Position >= (show.Total - 3))
                 {
-                    await Task.Delay(50);
-                    goto check;
+                    MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, 0);
                 }
+                show.PlayBrush = new SolidColorBrush(Colors.ForestGreen);
+                show.IsPlaying = true;
+                var a = (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as Panel).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
+                a.Visibility = Visibility.Visible;
+                MainWindow.MediaPlayer.MediaPlayer.Play();
             }
-            if (show.Position >= (show.Total - 3))
+            catch
             {
-                MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position = new System.TimeSpan(0, 0, 0);
+                var errorDialog = new ContentDialog() { Title = "There Seems To Be A Problem Playing This Show", Content = "please try again later", CloseButtonText = "ok" };
+                errorDialog.ShowAsync();
             }
-            show.PlayBrush = new SolidColorBrush( Colors.ForestGreen);
-            show.IsPlaying = true;
-            var a= (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as Panel).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
-            a.Visibility = Visibility.Visible;
-            MainWindow.MediaPlayer.MediaPlayer.Play();
         }
 
         private void Update_position_dispach_timer_Tick(object sender, object e)
@@ -401,14 +415,43 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
             }
         }
 
-        private void Refresh_btn_Click(object sender, RoutedEventArgs e)
+        private async void Refresh_btn_Click(object sender, RoutedEventArgs e)
         {
-            refresh_indecator.IsActive = true;
-            if(feedContentType == FeedContent.OnePodcast)
+            await Task.Run(async () =>
             {
-                var podcast = feedContent as Podcast;
-
-            }
+                Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                {
+                    refresh_indecator.IsActive = true;
+                });
+                if (feedContentType == FeedContent.OnePodcast)
+                {
+                    var podcast = feedContent as Podcast;
+                    var newPod = await Podcast.get_podcast_from_url_string(podcast.Rss_url);
+                    var PodsDb = new Sql.SqlLite.SqlLitePodcasts();
+                    await PodsDb.init();
+                    await PodsDb.save_to_db_one_podcast_and_all_its_shows(newPod, podcast);
+                    await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                    {
+                        await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).RefreshAsync();
+                    });
+                    }
+                else
+                {
+                    if (feedContentType == FeedContent.AllPodcasts)
+                    {
+                        await MainWindow.mainPage.pull_new_info_about_podcast_put_on_file(MainPage.Podcasts);
+                        await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                        {
+                            await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>).RefreshAsync();
+                        });
+                    }
+                }
+                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                {
+                    apesode_ListView.LoadMoreItemsAsync();
+                    refresh_indecator.IsActive = false;
+                });
+            });
         }
     }
 }

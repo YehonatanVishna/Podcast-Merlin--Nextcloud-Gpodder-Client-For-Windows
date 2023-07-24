@@ -13,6 +13,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -258,104 +259,10 @@ Podcasts.Add(item);
 
 
         }
-        private async Task add_podcast_on_end(string url, ObservableCollection<Podcast> pods)
-        {
-            pods.Add(await Podcast.get_podcast_from_url_string(url));
-        }
-        public static bool IsSameShow(PodcastApesode show, PodcastApesode Show)
-        {
-            var equals = new bool[6];
-            equals[0] = show.PlayUrl.Equals(Show.PlayUrl);
-            equals[1] = show.Total == Show.Total;
-            equals[2] = show.Discription.Equals(Show.Discription);
-            equals[3] = show.Name.Equals(Show.Name);
-            equals[4] = show.Published.Equals(Show.Published);
-            equals[5] = show.PodcastID == Show.PodcastID;
-            int conds = 0;
-            for (int i = 0; i < equals.Count(); i++)
-            {
-                if (equals[i])
-                {
-                    conds++;
-                }
-            }
-            return conds >= 4;
-        }
-        public static async Task saveToDbAllShowsAndPodcasts(ObservableCollection<Podcast> Pods_new, ObservableCollection<Podcast> Pods_old)
-        {
-            var ShowList = new List<PodcastApesode>();
-            foreach (var pod in Pods_new)
-            {
-                try
-                {
-                    pod.ID = await PodsDb.add(pod);
-                }
-                catch
-                {
-                    await PodsDb.update(pod);
-                }
-
-                var oldPod = Pods_old.Where((podcast) =>
-                {
-                    return podcast.Name.Equals(pod.Name);
-                }).FirstOrDefault();
-                foreach (var show in pod.PodcastApesodes)
-                {
-                    show.PodcastID = pod.ID;
-                    if (oldPod != null)
-                    {
-                        var oldShow = oldPod.PodcastApesodes.Where((Show) => IsSameShow(show, Show)).FirstOrDefault();
-                        double conditoions = 0;
-                        if (oldShow != null)
-                        {
-                            bool[] equalsss = new bool[7] {
-                            oldShow.PlayUrl.Equals(show.PlayUrl),
-                            oldShow.Total == show.Total,
-                             oldShow.Discription.Equals(show.Discription),
-                            oldShow.Name.Equals(show.Name),
-                            oldShow.Published.Equals(show.Published),
-                            oldShow.PodcastID == show.PodcastID,
-                            oldShow.ThumbnailIconUrl.Equals(show.ThumbnailIconUrl) };
-                            conditoions = 0;
-                            for (int i = 0; i < equalsss.Count(); i++)
-                            {
-                                if (equalsss[i])
-                                {
-                                    conditoions++;
-                                }
-                            }
-                            if (conditoions != equalsss.Length)
-                            {
-                                show.Position = oldShow.Position;
-                                ShowList.Add(show);
-                            }
-
-                        }
-                        else
-                        {
-                            ShowList.Add(show);
-                        }
-
-                    }
-
-                
-                    else
-                    {
-                        ShowList.Add(show);
-                    }
-                }
-            }
-
-            try
-            {
-
-                var result = await ShowsDb.SaveBulck(ShowList);
-            }
-            catch
-            {
-
-            }
-        }
+        //private async Task add_podcast_on_end(string url, ObservableCollection<Podcast> pods)
+        //{
+        //    pods.Add(await Podcast.get_podcast_from_url_string(url));
+        //}
         public async Task pull_new_info_about_podcast_put_on_file(ObservableCollection<Podcast> currentPodcasts)
         {
             var Pods = await PodsDb.get_all_podcasts();
@@ -366,13 +273,17 @@ Podcasts.Add(item);
             var podcasts_rss_url = await Sync.SyncService.get_podcasts_urls();
             var newPods = new ObservableCollection<Podcast>();
             var Tasks = new List<Task>();
+            Func<string, ObservableCollection<Podcast>, Task> add_podcast_on_end = async (url, pods) =>
+            {
+                pods.Add(await Podcast.get_podcast_from_url_string(url));
+            };
             foreach (var url in podcasts_rss_url)
             {
                 Tasks.Add(Task.Run(async ()=> await add_podcast_on_end(url, newPods)));
             }
             Task.WaitAll(Tasks.ToArray());
 
-            await saveToDbAllShowsAndPodcasts(Pods_new: newPods, Pods_old: Pods);
+            await PodsDb.saveToDbAllShowsAndPodcasts(Pods_new: newPods, Pods_old: Pods);
 
             Newtonsoft.Json.JsonSerializer jsonSerializer = new Newtonsoft.Json.JsonSerializer()
             {
@@ -394,7 +305,7 @@ Podcasts.Add(item);
             if (localSettings.Values["IsNextCloudInitAlready?"] == null || localSettings.Values["IsNextCloudInitAlready?"].ToString().Equals(bool.FalseString))
             {
                 var father = new StackPanel();
-                var urlTextBox = new TextBox();
+                var urlTextBox = new TextBox() {PlaceholderText="Server address or ip, don't forget to specify port if nessery"};
                 father.Children.Add(urlTextBox);
                 Binding UrlBinding = new Binding();
                 TextBlock richTextBlock = new TextBlock() { TextWrapping = TextWrapping.Wrap };
@@ -406,7 +317,9 @@ Go over to " });
                 richTextBlock.Inlines.Add(hyper);
                 richTextBlock.Inlines.Add(new Run() { Text = @", select Webo.hosting as your provider and create your own private syncing account." });
                 father.Children.Add(richTextBlock);
-                var getUrl = new ContentDialog() { Title = "please enter the adress of your nextcloud instance", CloseButtonText = "cancel", SecondaryButtonText = "ok", SecondaryButtonCommand = new continueUrlRegestration(), SecondaryButtonCommandParameter = urlTextBox, Content = father };
+                var getUrl = new ContentDialog() { Title = "please enter the adress of your nextcloud instance", CloseButtonText = "cancel", SecondaryButtonText = "ok", SecondaryButtonCommandParameter = urlTextBox, Content = father };
+                getUrl.DataContext = urlTextBox;
+                getUrl.SecondaryButtonClick += GetUrl_SecondaryButtonClick;
                 await getUrl.ShowAsync();
             check_again:
                 if (Server_Details != null && Server_Details.login_url != "" && Server_Details.login_url != null)
@@ -422,6 +335,53 @@ Go over to " });
                     goto check_again;
                 }
 
+            }
+        }
+
+        private async void GetUrl_SecondaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+        {
+            try
+            {
+                var textBox = sender.DataContext as TextBox;
+                var httpClient = new HttpClient();
+                httpClient.BaseAddress = new Uri(textBox.Text);
+                HttpResponseMessage res;
+                try
+                {
+                    res = await httpClient.PostAsync(textBox.Text + "/login/v2", new StringContent(""));
+                }
+                catch
+                {
+                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                }
+                if (!res.IsSuccessStatusCode)
+                {
+                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                }
+                var res_txt = await res.Content.ReadAsStringAsync();
+                Newtonsoft.Json.JsonSerializer jsonSerializer = new Newtonsoft.Json.JsonSerializer();
+                var st = new StringReader(res_txt);
+                Dictionary<string, object> res_disirialized;
+                try
+                {
+                    res_disirialized = jsonSerializer.Deserialize(st, typeof(Dictionary<string, object>)) as Dictionary<string, object>;
+                }
+                catch
+                {
+                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                }
+                var login_url = res_disirialized["login"] as string;
+                localSettings.Values["login_url"] = login_url;
+                var token = ((res_disirialized["poll"] as IEnumerable<IEnumerable<object>>).ElementAt(0)).First().ToString();
+                var poll_url = ((res_disirialized["poll"] as IEnumerable<IEnumerable<object>>).ElementAt(1)).First().ToString();
+                MainPage.Server_Details = new MainPage.loginPageDitales();
+                MainPage.Server_Details.login_url = login_url;
+                MainPage.Server_Details.poll_url = poll_url;
+                MainPage.Server_Details.token = token;
+            }
+            catch(Exception e)
+            {
+                (new ContentDialog { Title = "We Couldn't Complete Setup", Content = e.Message, CloseButtonText="ok" }).ShowAsync();
             }
         }
 

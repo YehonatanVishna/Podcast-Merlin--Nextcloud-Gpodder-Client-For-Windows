@@ -157,24 +157,6 @@ delete from Podcasts where RssUrl = '{rssFeedUrl}';
         }
         public async Task saveToDbAllShowsAndPodcasts(ObservableCollection<Podcast> Pods_new, ObservableCollection<Podcast> Pods_old)
         {
-            Func<PodcastApesode, PodcastApesode, bool> isSameShow = (show, Show) => {
-                var equals = new bool[6];
-                equals[0] = show.PlayUrl.Equals(Show.PlayUrl);
-                equals[1] = show.Total == Show.Total;
-                equals[2] = show.Discription.Equals(Show.Discription);
-                equals[3] = show.Name.Equals(Show.Name);
-                equals[4] = show.Published.Equals(Show.Published);
-                equals[5] = show.PodcastID == Show.PodcastID;
-                int conds = 0;
-                for (int i = 0; i < equals.Count(); i++)
-                {
-                    if (equals[i])
-                    {
-                        conds++;
-                    }
-                }
-                return conds >= 4;
-            };
             var ShowList = new List<PodcastApesode>();
             foreach (var pod in Pods_new)
             {
@@ -196,7 +178,7 @@ delete from Podcasts where RssUrl = '{rssFeedUrl}';
                     show.PodcastID = pod.ID;
                     if (oldPod != null)
                     {
-                        var oldShow = oldPod.PodcastApesodes.Where((Show) => isSameShow(show, Show)).FirstOrDefault();
+                        var oldShow = oldPod.PodcastApesodes.Where((Show) => Show.isSameShow(show)).FirstOrDefault();
                         double conditoions = 0;
                         if (oldShow != null)
                         {
@@ -237,6 +219,70 @@ delete from Podcasts where RssUrl = '{rssFeedUrl}';
                     }
                 }
             }
+
+            try
+            {
+                var showsDb = new SqlLitePodcastsShows();
+                await showsDb.initAsync();
+                var result = await showsDb.SaveBulck(ShowList);
+            }
+            catch
+            {
+
+            }
+        }
+
+
+        public async Task save_to_db_one_podcast_and_all_its_shows(Podcast new_pod, Podcast old_pod)
+        {
+            var ShowList = new List<PodcastApesode>();
+                await update(new_pod);
+                foreach (var show in new_pod.PodcastApesodes)
+                {
+                    show.PodcastID = new_pod.ID;
+                    if (old_pod != null)
+                    {
+                        var oldShow = old_pod.PodcastApesodes.Where((Show) => Show.isSameShow(show)).FirstOrDefault();
+                        double conditoions = 0;
+                        if (oldShow != null)
+                        {
+                            bool[] equalsss = new bool[7] {
+                            oldShow.PlayUrl.Equals(show.PlayUrl),
+                            oldShow.Total == show.Total,
+                             oldShow.Discription.Equals(show.Discription),
+                            oldShow.Name.Equals(show.Name),
+                            oldShow.Published.Equals(show.Published),
+                            oldShow.PodcastID == show.PodcastID,
+                            oldShow.ThumbnailIconUrl.Equals(show.ThumbnailIconUrl) };
+                            conditoions = 0;
+                            for (int i = 0; i < equalsss.Count(); i++)
+                            {
+                                if (equalsss[i])
+                                {
+                                    conditoions++;
+                                }
+                            }
+                            if (conditoions != equalsss.Length)
+                            {
+                                show.Position = oldShow.Position;
+                                ShowList.Add(show);
+                            }
+
+                        }
+                        else
+                        {
+                            ShowList.Add(show);
+                        }
+
+                    }
+
+
+                    else
+                    {
+                        ShowList.Add(show);
+                    }
+                }
+            
 
             try
             {

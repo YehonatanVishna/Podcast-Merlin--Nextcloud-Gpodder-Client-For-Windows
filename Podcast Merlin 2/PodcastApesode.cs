@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using Podcast_Merlin_Uwp;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.WebUI;
@@ -110,7 +111,7 @@ namespace PodMerForWinUi
         private int visual_state = 0;
         public string getFullNumberString(int a)
         {
-            if (a < 9 && a>=0) {
+            if (a <= 9 && a>=0) {
                 return "0" + a.ToString();
             }
             return a.ToString();
@@ -123,6 +124,7 @@ namespace PodMerForWinUi
 {getFullNumberString(published.Hour)}:{getFullNumberString(published.Minute)}";
             }
         }
+        //identical
         public bool equals(PodcastApesode show)
         {
             bool playS = playUrl.Equals(show.playUrl);
@@ -135,6 +137,26 @@ namespace PodMerForWinUi
             bool NameS = Name.Equals(show.Name);
             bool pubS = Published.Equals(show.published);
             return playS && IDS && PodIDS && totalS && startedS && posS && disS && NameS && pubS;
+        }
+        //almost the same, probably the same
+        public bool isSameShow(PodcastApesode Show){
+            var show = this;
+            var equals = new bool[6];
+            equals[0] = show.PlayUrl.Equals(Show.PlayUrl);
+            equals[1] = show.Total == Show.Total;
+            equals[2] = show.Discription.Equals(Show.Discription);
+            equals[3] = show.Name.Equals(Show.Name);
+            equals[4] = show.Published.Equals(Show.Published);
+            equals[5] = show.PodcastID == Show.PodcastID;
+            int conds = 0;
+            for (int i = 0; i < equals.Count(); i++)
+            {
+                if (equals[i])
+                {
+                    conds++;
+                }
+            }
+            return conds >= 4;
         }
 
     }

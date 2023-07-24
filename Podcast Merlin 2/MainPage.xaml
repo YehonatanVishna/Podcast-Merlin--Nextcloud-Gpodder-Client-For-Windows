@@ -24,7 +24,7 @@
             <ColumnDefinition/>
         </Grid.ColumnDefinitions>
         <StackPanel  Orientation="Horizontal" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" HorizontalAlignment="Right">
-            <winui:ProgressRing x:Name="update_loading_ring" HorizontalAlignment="Left" IsActive="False"/>
+            <winui:ProgressRing x:Name="update_loading_ring"  HorizontalAlignment="Left" IsActive="False"/>
             <Button x:Name="refresh_button" ToolTipService.ToolTip="Refresh"   HorizontalAlignment="Right" VerticalAlignment="Bottom" Click="refresh_button_Click">
                 <SymbolIcon Symbol="Refresh"/>
             </Button>

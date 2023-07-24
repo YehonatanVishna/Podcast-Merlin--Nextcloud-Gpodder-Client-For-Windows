@@ -39,13 +39,13 @@
             <RowDefinition Height="50"/>
             <RowDefinition Height="5*"/>
         </Grid.RowDefinitions>
-        <StackPanel x:Name="ToolBar" Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" FlowDirection="RightToLeft" >
+        <StackPanel x:Name="ToolBar" Grid.Column="1" Grid.Row="0" FlowDirection="RightToLeft" >
             <AppBarButton x:Name="Refresh_btn" Click="Refresh_btn_Click">
                 <SymbolIcon  x:Name="refresh_page_content" Symbol="Refresh"/>
                 
             </AppBarButton>
-            <winui:ProgressRing x:Name="refresh_indecator" ></winui:ProgressRing>
         </StackPanel>
+        <winui:ProgressRing x:Name="refresh_indecator" HorizontalAlignment="Left" IsActive="False" Grid.Row="0" Grid.Column="0" Height="40" Width="40" Visibility="Visible" ></winui:ProgressRing>
         <!--<ScrollViewer Grid.Row="0" Grid.Column="0" ViewChanged="ScrollViewer_ViewChanged">-->
             <ListView ItemContainerStyle="{StaticResource ListViewItemContainerStyle2}" Grid.Row="1" FocusVisualPrimaryBrush="Cornsilk" winui:BackdropMaterial.ApplyToRootOrPageBackground="False" FocusVisualMargin="100,100,100,100" ContainerContentChanging="apesode_ListView_ContainerContentChanging" Loaded="apesode_ListView_Loaded" ShowsScrollingPlaceholders="True" IncrementalLoadingTrigger="None" IncrementalLoadingThreshold="20" x:Name="apesode_ListView" SelectionChanged="apesode_ListView_SelectionChanged">
                 <ListView.ItemsPanel>
