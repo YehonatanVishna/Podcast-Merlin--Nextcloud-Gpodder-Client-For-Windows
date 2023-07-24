@@ -83,7 +83,6 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                         var cmd = new SqliteCommand(NoneQury, ShowsDb.sqldb);
                         var result = cmd.ExecuteNonQuery();
                         NoneQury = "";
-                        var a = 11;
                     }
                     catch
                     {
