@@ -57,7 +57,7 @@ namespace PodMerForWinUi
             var PageType = (FeedContent) ParameterList.FirstOrDefault();
             if(PageType == FeedContent.AllPodcasts)
             {
-                App.MainWindow.WindowTitleText.Name = "podcast feed";
+                App.MainWindow.WindowTitleText.Name = "Podcast feed";
                 await ((IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>)ParameterList[1]).LoadMoreItemsAsync(10);
                 
             }
@@ -113,7 +113,7 @@ namespace PodMerForWinUi
                 var podcast = PodcastAndShow.Podcast;
                 if(show.PlayUrl ==null || show.PlayUrl == "")
                 {
-                    throw new Exception("show doesnt have a play url");
+                    throw new Exception("Show doesn't have a play url");
                 }
                 apesode_ListView.SelectedItem = (show as PodcastApesode);
                 MainWindow.mediaPlayer_with_poster.ImageUrl = show.ThumbnailIconUrl;
@@ -196,7 +196,7 @@ namespace PodMerForWinUi
             }
             catch
             {
-                var errorDialog = new ContentDialog() { Title = "There Seems To Be A Problem Playing This Show", Content = "please try again later", CloseButtonText = "ok" };
+                var errorDialog = new ContentDialog() { Title = "There seems to be a problem playing this show.", Content = "Please try again later.", CloseButtonText = "Ok" };
                 errorDialog.ShowAsync();
             }
         }
