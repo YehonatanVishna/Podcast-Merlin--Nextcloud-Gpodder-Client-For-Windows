@@ -305,19 +305,19 @@ Podcasts.Add(item);
             if (localSettings.Values["IsNextCloudInitAlready?"] == null || localSettings.Values["IsNextCloudInitAlready?"].ToString().Equals(bool.FalseString))
             {
                 var father = new StackPanel();
-                var urlTextBox = new TextBox() {PlaceholderText="Server address or ip, don't forget to specify port if nessery"};
+                var urlTextBox = new TextBox() {PlaceholderText="https://example.com/index.php or http://<ip>:<port>/index.php"};
                 father.Children.Add(urlTextBox);
                 Binding UrlBinding = new Binding();
                 TextBlock richTextBlock = new TextBlock() { TextWrapping = TextWrapping.Wrap };
-                richTextBlock.Inlines.Add(new Run() { Text = @"Don't have your own nextcloud server? 
+                richTextBlock.Inlines.Add(new Run() { Text = @"Don't have your own Nextcloud server? 
 Go over to " });
                 var hyper = new Hyperlink();
                 hyper.NavigateUri = new Uri(@"https://nextcloud.com/sign-up/");
-                hyper.Inlines.Add(new Run() { Text = "this link" });
+                hyper.Inlines.Add(new Run() { Text = "This link" });
                 richTextBlock.Inlines.Add(hyper);
                 richTextBlock.Inlines.Add(new Run() { Text = @", select Webo.hosting as your provider and create your own private syncing account." });
                 father.Children.Add(richTextBlock);
-                var getUrl = new ContentDialog() { Title = "please enter the adress of your nextcloud instance", SecondaryButtonText = "Enter", SecondaryButtonCommandParameter = urlTextBox, Content = father };
+                var getUrl = new ContentDialog() { Title = "Please enter the adress of your Nextcloud instance", SecondaryButtonText = "Submit", SecondaryButtonCommandParameter = urlTextBox, Content = father };
                 getUrl.DataContext = urlTextBox;
                 getUrl.SecondaryButtonClick += GetUrl_SecondaryButtonClick;
                 getUrl.KeyDown += GetUrl_KeyDown;
@@ -366,11 +366,11 @@ Go over to " });
                 }
                 catch
                 {
-                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                    throw new Exception("We were unable to contact to your server, please check that you entered the correct url, including port number. Please check that your server is up.");
                 }
                 if (!res.IsSuccessStatusCode)
                 {
-                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up.");
                 }
                 var res_txt = await res.Content.ReadAsStringAsync();
                 Newtonsoft.Json.JsonSerializer jsonSerializer = new Newtonsoft.Json.JsonSerializer();
@@ -382,7 +382,7 @@ Go over to " });
                 }
                 catch
                 {
-                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up");
+                    throw new Exception("We were unable to contact your server, please check you entered the correct url, including port number. Please check that your server is up.");
                 }
                 var login_url = res_disirialized["login"] as string;
                 localSettings.Values["login_url"] = login_url;
@@ -396,7 +396,7 @@ Go over to " });
             catch (Exception e)
             {
                 sender.Hide();
-                var error = (new ContentDialog { Title = "We Couldn't Complete Setup", Content = e.Message, CloseButtonText = "Retry" });
+                var error = (new ContentDialog { Title = "We couldn't complete setup.", Content = e.Message, CloseButtonText = "Retry" });
                 error.CloseButtonClick += Error_CloseButtonClick;
                 await error.ShowAsync();
             }
@@ -593,7 +593,7 @@ Please don't close the app."
         }
         private async void goto_feed_Click(object sender, RoutedEventArgs e)
         {
-            App.MainWindow.WindowTitleText.Name = "Podcasts Feed";
+            App.MainWindow.WindowTitleText.Name = "Podcasts feed";
             var collection = new IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>(itemsPerPage: 50);
             var parm = new List<object>();
             parm.Add(FeedContent.AllPodcasts);
@@ -602,20 +602,20 @@ Please don't close the app."
         }
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
-           App.MainWindow.WindowTitleText.Name = "Home Page";
+           App.MainWindow.WindowTitleText.Name = "Home page";
         }
 
         private async void addPodcast_Click(object sender, RoutedEventArgs e)
         {
-            var Textb = new TextBox() { PlaceholderText = "the rss feed url" };
+            var Textb = new TextBox() { PlaceholderText = "The rss feed url." };
             var parm = new List<object>();
             parm.Add(Textb);
             var popup = new ContentDialog()
             {
-                Title = "Write Here The Url Of The Podcast's Rss Feed",
-                CloseButtonText = "cancel",
+                Title="Enter the url of the podcasts's RSS feed here",
+                CloseButtonText = "Cancel",
                 Content = Textb,
-                SecondaryButtonText = "add",
+                SecondaryButtonText = "Add",
                 SecondaryButtonCommandParameter = parm,
                 SecondaryButtonCommand = new add(),
 
@@ -684,7 +684,7 @@ Please don't close the app."
                 var cont = new ContentDialog()
                 {
                     Title = "Operation Failed",
-                    CloseButtonText = "ok"
+                    CloseButtonText = "Ok"
                 };
                 await cont.ShowAsync();
             }

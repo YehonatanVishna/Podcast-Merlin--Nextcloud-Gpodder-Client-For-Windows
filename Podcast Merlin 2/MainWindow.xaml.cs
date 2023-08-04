@@ -221,7 +221,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
             }
         }
 
-        private WindowTitle windowTitleText = new WindowTitle() { Name = "Home Page" };
+        private WindowTitle windowTitleText = new WindowTitle() { Name = "Home page" };
         public static void expendPlayer()
         {
             mainGridStatic.RowDefinitions.Last().Height = new GridLength(150, GridUnitType.Pixel);
