@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation and Contributors.
 // Licensed under the MIT License.
-
+ 
 using Microsoft.Toolkit.Collections;
 using Microsoft.Toolkit.Uwp;
 using Microsoft.UI.Xaml.Controls;
@@ -190,7 +190,7 @@ namespace PodMerForWinUi
                 }
                 show.PlayBrush = new SolidColorBrush(await getRightColor(3)) ;
                 show.IsPlaying = true;
-                var a = (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as Panel).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
+                var a = (((apesode_ListView.ContainerFromItem(PodcastAndShow) as ListViewItem).ContentTemplateRoot as FrameworkElement).FindName("PodcastProgress") as Microsoft.UI.Xaml.Controls.ProgressBar);
                 a.Visibility = Visibility.Visible;
                 MainWindow.MediaPlayer.MediaPlayer.Play();
             }
@@ -467,6 +467,70 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                     refresh_indecator.IsActive = false;
                 });
             });
+        }
+
+        private void ShowInfoItem_RightTapped(object sender, Windows.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+        {
+            apesode_ListView.SelectedItem = (sender as FrameworkElement).DataContext;
+            var menu = new MenuFlyout();
+            ShowAndPodcast showAndPodcast = (sender as FrameworkElement).DataContext as ShowAndPodcast;
+            var mark_as_played = new MenuFlyoutItem() { Text = "mark as played" };
+            mark_as_played.DataContext = (sender as FrameworkElement).DataContext;
+            mark_as_played.Click += Mark_as_played_Click;
+
+
+            var mark_as_unplayed = new MenuFlyoutItem() { Text = "mark as unplayed" };
+            mark_as_unplayed.DataContext = (sender as FrameworkElement).DataContext;
+            mark_as_unplayed.Click += Mark_as_unplayed_Click;
+
+            if (showAndPodcast.Show.Position == showAndPodcast.Show.Total)
+            {
+                menu.Items.Add(mark_as_unplayed);
+            }
+            else
+            {
+                menu.Items.Add(mark_as_played);
+            }
+
+            UIElement b = sender as UIElement;
+            b.ContextFlyout = menu;
+            menu.ShowAt(sender as UIElement, e.GetPosition(sender as UIElement));
+
+        }
+
+        private void Mark_as_unplayed_Click(object sender, RoutedEventArgs e)
+        {
+            ShowAndPodcast showPod = (sender as FrameworkElement).DataContext as ShowAndPodcast;
+            showPod.Show.Position = 0;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Sync.SyncService.SendAction(showPod, 0);
+                }
+                catch
+                {
+
+                }
+            });
+        }
+
+        private void Mark_as_played_Click(object sender, RoutedEventArgs e)
+        {
+            ShowAndPodcast showPod = (sender as FrameworkElement).DataContext as ShowAndPodcast;
+            showPod.Show.Position = showPod.Show.Total;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Sync.SyncService.SendAction(showPod, showPod.Show.Total);
+                }
+                catch
+                {
+
+                }
+            });
+            
         }
     }
 }

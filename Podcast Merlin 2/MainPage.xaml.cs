@@ -301,7 +301,6 @@ Podcasts.Add(item);
         }
         public async void StartNextCloudConfig()
         {
-            //await Task.Delay(2222);
             if (localSettings.Values["IsNextCloudInitAlready?"] == null || localSettings.Values["IsNextCloudInitAlready?"].ToString().Equals(bool.FalseString))
             {
                 var father = new StackPanel();

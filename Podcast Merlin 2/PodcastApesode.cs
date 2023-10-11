@@ -65,6 +65,13 @@ namespace PodMerForWinUi
                 {
                     Vis = Visibility.Visible;
                 }
+                else
+                {
+                    if(value == 0)
+                    {
+                        Vis = Visibility.Collapsed;
+                    }
+                }
                 SetProperty(ref position, value);
 
             } }
