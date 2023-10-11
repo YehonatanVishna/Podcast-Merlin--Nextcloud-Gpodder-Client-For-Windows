@@ -127,10 +127,8 @@ Podcasts.Add(item);
                         var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
                         Actions = await Sync.SyncService.get_actions_and_put_them_on_file();
                         loadingCompleted();
-
-
                         Podcasts_Grid.ItemsSource = await Task.Run(async () => { await pull_new_info_about_podcast_put_on_file(Podcastss); return await use_cashed_podcasts_and_put_them_on_screen(); });
-                        update_loading_ring.IsActive = false;
+                        App.MainWindow.GlobalRefreshRing.IsActive = false;
 
                     }
                     else
@@ -158,7 +156,7 @@ Podcasts.Add(item);
 
             catch
             {
-                update_loading_ring.IsActive = true;
+                App.MainWindow.GlobalRefreshRing.IsActive = true;
                 if (localSettings.Values["lastCheckedPodcasts"] != null)
                 {
                     Podcasts_Grid.ItemsSource = await use_cashed_podcasts_and_put_them_on_screen();
@@ -168,7 +166,7 @@ Podcasts.Add(item);
                 Podcasts_Grid.ItemsSource = await use_cashed_podcasts_and_put_them_on_screen();
                 loadingCompleted();
                 await Sync.SyncService.SyncCashedActions();
-                update_loading_ring.IsActive = false;
+                App.MainWindow.GlobalRefreshRing.IsActive = false;
             }
 
 
@@ -178,7 +176,7 @@ Podcasts.Add(item);
         {
             Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                update_loading_ring.IsActive = true;
+                App.MainWindow.GlobalRefreshRing.IsActive = true;
             });
             //var Pods = currentPodcasts;
             var podcasts_rss_url = await Sync.SyncService.get_podcasts_urls();
@@ -532,13 +530,12 @@ Please don't close the app."
             Frame.Navigate(typeof(ShowsFeed), parm);
         }
 
-        private async void refresh_button_Click(object sender, RoutedEventArgs e)
-        {
-            await refesh();
-        }
+
         public async Task refesh()
         {
-            update_loading_ring.IsActive = true;
+            await App.MainWindow.Refresh();
+        }
+        public async Task RefreshTask () {
             await Task.Run(() => pull_new_info_about_podcast_put_on_file(Podcasts));
             var Podcastss = await Task.Run(use_cashed_podcasts_and_put_them_on_screen);
             await Sync.SyncService.get_actions_and_put_them_on_file();
@@ -548,7 +545,6 @@ Please don't close the app."
             {
                 Podcasts.Add(item);
             }
-            update_loading_ring.IsActive = false;
         }
         private static async Task<List<ShowAndPodcast>> getRangeForAllPodcasts(int pageIndex, int pageSize)
         {
@@ -602,6 +598,7 @@ Please don't close the app."
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
            App.MainWindow.WindowTitleText.Name = "Home page";
+            MainWindow.RefreshFunc = () => RefreshTask();
         }
 
         private async void addPodcast_Click(object sender, RoutedEventArgs e)

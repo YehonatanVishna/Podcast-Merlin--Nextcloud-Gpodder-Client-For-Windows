@@ -160,6 +160,10 @@ delete from Podcasts where RssUrl = '{rssFeedUrl}';
             var ShowList = new List<PodcastApesode>();
             foreach (var pod in Pods_new)
             {
+                if(pod == null)
+                {
+                    break;
+                }
                 try
                 {
                     pod.ID = await add(pod);

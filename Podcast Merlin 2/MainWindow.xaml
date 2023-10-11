@@ -8,6 +8,7 @@
     xmlns:local="using:PodMerForWinUi"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:winui="using:Microsoft.UI.Xaml.Controls"
     xmlns:controls ="using:PodMerForWinUi.costom_controls"
     mc:Ignorable="d"
     
@@ -31,35 +32,36 @@
 
         <Grid Grid.Row="0" x:Name="Window_title_bar" Background="Transparent">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPaddingColumn" Width="0"/>
                 <ColumnDefinition Width="40"/>
                 <ColumnDefinition></ColumnDefinition>
+                <ColumnDefinition Width="40"/>
+                <ColumnDefinition x:Name="RightPaddingColumn" Width="0"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" x:Name="back_btn" Foreground="{ThemeResource ResourceKey=AppBarItemForegroundThemeBrush}"  IsEnabled="{x:Bind fff.CanGoBack, Mode=OneWay}" ToolTipService.ToolTip="Back"  Background="{ThemeResource ResourceKey=AppBarBackgroundThemeBrush}" Height="32" Margin="0,0,0,0" CornerRadius="0" BorderThickness="0" Click="back_btn_Click" HorizontalAlignment="Left" VerticalAlignment="Top">
-                <SymbolIcon Symbol="Back"/>
-                <!--<Button.Resources>
-                    <ResourceDictionary>
-                        <ResourceDictionary.ThemeDictionaries>
-                            <ResourceDictionary x:Key="Dark">
-                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White"/>
-                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource ResourceKey=ApplicationPageBackgroundThemeBrush}"/>
-                            </ResourceDictionary>
-                            <ResourceDictionary x:Key="Light">
-                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="Black"/>
-                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource ResourceKey=ApplicationPageBackgroundThemeBrush}"/>
-                            </ResourceDictionary>
-                        </ResourceDictionary.ThemeDictionaries>
-                    </ResourceDictionary>
-                </Button.Resources>-->
-            </Button>
-            <Grid x:Name="draggable_bar" Background="{ThemeResource ResourceKey=AppBarBackgroundThemeBrush}" Grid.Column="1">
-                <TextBlock HorizontalTextAlignment="Center" x:Name="windowTitle" Foreground="{ThemeResource ResourceKey=AppBarItemForegroundThemeBrush}" TextAlignment="Center" VerticalAlignment="Center" IsColorFontEnabled="True"  HorizontalAlignment="Stretch" Visibility="Visible" Text="{Binding WindowTitleText.Name, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"></TextBlock>
-                <StackPanel Orientation="Horizontal" Visibility="{x:Bind local:MainWindow.isDisconnected.Booly , Mode=OneWay}">
-                    <!--<BitmapIcon  HorizontalAlignment="Left" UriSource="ms-appx:///Assets/Network-Disconnected-256.png"/>-->
-                    <SymbolIcon Symbol="DisconnectDrive" HorizontalAlignment="Left" Margin="5,5,5,5"/>
-                    <TextBlock VerticalAlignment="Center" IsColorFontEnabled="True"><Bold>unable to connect to your server</Bold></TextBlock>
-                </StackPanel>
+            <Grid x:Name="draggable_bar" Background="{ThemeResource ResourceKey=AppBarBackgroundThemeBrush}" Grid.Column="1" Grid.ColumnSpan="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition></ColumnDefinition>
+                    <ColumnDefinition Width="40"/>
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="1">
+                    <TextBlock HorizontalTextAlignment="Center" x:Name="windowTitle" Foreground="{ThemeResource ResourceKey=AppBarItemForegroundThemeBrush}" TextAlignment="Center" VerticalAlignment="Center" IsColorFontEnabled="True"  HorizontalAlignment="Stretch" Visibility="Visible" Text="{Binding WindowTitleText.Name, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}"></TextBlock>
+                    <StackPanel Orientation="Horizontal" Visibility="{x:Bind local:MainWindow.isDisconnected.Booly , Mode=OneWay}">
+                        <SymbolIcon Symbol="DisconnectDrive" HorizontalAlignment="Left" Margin="5,5,5,5"/>
+                        <TextBlock VerticalAlignment="Center" IsColorFontEnabled="True"><Bold>unable to connect to your server</Bold></TextBlock>
+                    </StackPanel>
+                </Grid>
             </Grid>
+            <Button Grid.Column="3" x:Name="refresh_btn" Click="refresh_btn_Click" Foreground="{ThemeResource ResourceKey=AppBarItemForegroundThemeBrush}"  ToolTipService.ToolTip="Refresh"  Background="{ThemeResource ResourceKey=AppBarBackgroundThemeBrush}" Height="32" Margin="0,0,0,0" CornerRadius="0" BorderThickness="0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                <SymbolIcon Symbol="Refresh"/>
+            </Button>
+            <Button Grid.Column="1" x:Name="back_btn" Foreground="{ThemeResource ResourceKey=AppBarItemForegroundThemeBrush}"  IsEnabled="{x:Bind fff.CanGoBack, Mode=OneWay}" ToolTipService.ToolTip="Back"  Background="{ThemeResource ResourceKey=AppBarBackgroundThemeBrush}" Height="32" Margin="0,0,0,0" CornerRadius="0" BorderThickness="0" Click="back_btn_Click" HorizontalAlignment="Left" VerticalAlignment="Top">
+                <SymbolIcon Symbol="Back"/>
+            </Button>
+            <winui:ProgressRing x:Name="refresh_ring" IsActive="False" Grid.Column="4" HorizontalAlignment="Left"></winui:ProgressRing>
+
+
         </Grid>
 
         <Grid BorderThickness="0,0,0,0"  VerticalAlignment="Bottom" Grid.Row="2" Grid.ColumnSpan="2" MaxHeight="160" HorizontalAlignment="Stretch" >

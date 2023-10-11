@@ -10,6 +10,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Input;
 //using Windows.UI.Shell;
 using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
@@ -37,6 +38,7 @@ namespace PodMerForWinUi
 Windows.Storage.ApplicationData.Current.LocalSettings;
         public static Windows.Storage.StorageFolder localFolder =
             Windows.Storage.ApplicationData.Current.LocalFolder;
+        public static Func<Task> RefreshFunc;
         public class WindowTitle : ObservableObject
         {
             private string name;
@@ -61,6 +63,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
         public static MainPage mainPage;
         public static CoreDispatcher dispatcher;
         public ApplicationViewTitleBar titleBar1;
+        public Microsoft.UI.Xaml.Controls.ProgressRing GlobalRefreshRing;
         public MainWindow()
         {
             Task.Run(async () =>
@@ -78,7 +81,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
             titleBar1.ButtonBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
             titleBar1.ButtonInactiveBackgroundColor = (Application.Current.Resources["AppBarBackgroundThemeBrush"] as SolidColorBrush).Color;
             var coreTitleBar = CoreApplication.GetCurrentView().TitleBar;
-            
+            coreTitleBar.LayoutMetricsChanged += CoreTitleBar_LayoutMetricsChanged;
             coreTitleBar.ExtendViewIntoTitleBar = true;
             this.ActualThemeChanged += MainWindow_ActualThemeChanged ;
             fff.Navigated += Fff_Navigated;
@@ -101,11 +104,18 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 startTimer();
 
             }
+            GlobalRefreshRing = refresh_ring;
             App.MainWindow = this;
 
 
 
 
+        }
+
+        private void CoreTitleBar_LayoutMetricsChanged(CoreApplicationViewTitleBar sender, object args)
+        {
+            LeftPaddingColumn.Width = new GridLength(sender.SystemOverlayLeftInset);
+            RightPaddingColumn.Width = new GridLength(sender.SystemOverlayRightInset);
         }
 
         private void MainWindow_ActualThemeChanged(FrameworkElement sender, object args)
@@ -238,8 +248,6 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 windowTitleText = value;
             }
         }
-
-
         private void back_btn_Click(object sender, RoutedEventArgs e)
         {
             if (fff.CanGoBack)
@@ -247,5 +255,26 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 fff.GoBack();
             }
         }
+
+        private async void refresh_btn_Click(object sender, RoutedEventArgs e)
+        {
+            //RefreshFunc =()=>  Task.Delay(10000) ;
+            await Refresh();
+
+        }
+        public async Task Refresh()
+        {
+            await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+            {
+                refresh_ring.IsActive = true;
+            });
+            
+            await RefreshFunc();
+            await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+            {
+                refresh_ring.IsActive = false;
+            });
+        }
+
     }
 }

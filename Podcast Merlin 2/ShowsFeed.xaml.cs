@@ -50,7 +50,7 @@ namespace PodMerForWinUi
 
         protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
-            
+            MainWindow.RefreshFunc = () =>  Task.Run(()=> { var a = 1 + 1; }) ;
             var ParameterList = e.Parameter as List<object>;
             apesode_ListView.ItemsSource = ParameterList[1];
             pageIncrementalLoadingSorce = ParameterList[1];
@@ -79,30 +79,33 @@ namespace PodMerForWinUi
                 }
             }
             feedContentType = PageType;
-            Refresh_btn.Command = new Refresh_Btn_Command();
-            Refresh_btn.CommandParameter = this;
+            //Refresh_btn.Command = new Refresh_Btn_Command();
+            //Refresh_btn.CommandParameter = this;
             apesode_ListView.SelectedIndex = 0;
             //(ParameterList[1] as IncrementalLoadingCollection<AllPodcastsShowsList, object>).LoadMoreItems(15);
-        }
-        class Refresh_Btn_Command : ICommand
-        {
-            public event EventHandler CanExecuteChanged;
-            public static Task LastRefresh;
-            public bool CanExecute(object parameter)
-            {
-                return ((LastRefresh == null) || (LastRefresh != null && LastRefresh.IsCompleted));
-                return false;
-            }
 
-            public void Execute(object parameter)
-            {
-                ShowsFeed showsFeed = parameter as ShowsFeed;
-                if(showsFeed.feedContentType == FeedContent.OnePodcast)
-                {
-                    
-                }
-            }
+
+            MainWindow.RefreshFunc = () => Refresh();
         }
+        //class Refresh_Btn_Command : ICommand
+        //{
+        //    public event EventHandler CanExecuteChanged;
+        //    public static Task LastRefresh;
+        //    public bool CanExecute(object parameter)
+        //    {
+        //        return ((LastRefresh == null) || (LastRefresh != null && LastRefresh.IsCompleted));
+        //        return false;
+        //    }
+
+        //    public void Execute(object parameter)
+        //    {
+        //        ShowsFeed showsFeed = parameter as ShowsFeed;
+        //        if(showsFeed.feedContentType == FeedContent.OnePodcast)
+        //        {
+                    
+        //        }
+        //    }
+        //}
         private Task lastSyncTask;
         private DispatcherTimer update_position_dispach_timer;
         private async void playShow(ShowAndPodcast PodcastAndShow)
@@ -362,19 +365,6 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                 show_ditailes_view.ChangeView(null, show_ditailes_view.VerticalOffset - wheelDelta, null);
         }
 
-        private void Show_notes_box_ManipulationDelta(object sender, Windows.UI.Xaml.Input.ManipulationDeltaRoutedEventArgs e)
-        {
-            //// Update the ScrollViewer's position based on the manipulation delta
-            //ScrollViewer scrollViewer = show_ditailes_view; // Replace "MyScrollViewer" with the actual name of your ScrollViewer control
-            //scrollViewer.ChangeView(scrollViewer.HorizontalOffset - e.Delta.Translation.X,
-            //                        scrollViewer.VerticalOffset,
-            //                        null);
-        }
-
-        private void Show_notes_box_NavigationCompleted(WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
-        {
-            throw new NotImplementedException();
-        }
 
         private void show_ditailes_view_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
         {
@@ -398,26 +388,6 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
 
         }
 
-        private void ScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
-        {
-            if(apesode_ListView.ItemsSource is AllPodcastsShowsList)
-            {
-                var scrollViewer = (ScrollViewer)sender;
-                if (scrollViewer.VerticalOffset == scrollViewer.ScrollableHeight)
-                {
-                    try
-                    {
-                        apesode_ListView.LoadMoreItemsAsync();
-                    }
-                    catch
-                    {
-
-                    }
-                }
-                    
-            }
-        }
-
         private async void apesode_ListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
             if (args.ItemIndex == apesode_ListView.Items.Count - 10)
@@ -426,14 +396,11 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
             }
         }
 
-        private async void Refresh_btn_Click(object sender, RoutedEventArgs e)
+        private async Task Refresh()
         {
             await Task.Run(async () =>
             {
-                Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
-                {
-                    refresh_indecator.IsActive = true;
-                });
+
                 
                 if (feedContentType == FeedContent.OnePodcast)
                 {
@@ -447,6 +414,7 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                     await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
                     {
                         await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).RefreshAsync();
+                        await apesode_ListView.LoadMoreItemsAsync();
                     });
                     }
                 else
@@ -461,40 +429,39 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                         });
                     }
                 }
-                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
-                {
-                    apesode_ListView.LoadMoreItemsAsync();
-                    refresh_indecator.IsActive = false;
-                });
+
             });
         }
 
         private void ShowInfoItem_RightTapped(object sender, Windows.UI.Xaml.Input.RightTappedRoutedEventArgs e)
         {
-            apesode_ListView.SelectedItem = (sender as FrameworkElement).DataContext;
-            var menu = new MenuFlyout();
             ShowAndPodcast showAndPodcast = (sender as FrameworkElement).DataContext as ShowAndPodcast;
-            var mark_as_played = new MenuFlyoutItem() { Text = "mark as played" };
-            mark_as_played.DataContext = (sender as FrameworkElement).DataContext;
-            mark_as_played.Click += Mark_as_played_Click;
-
-
-            var mark_as_unplayed = new MenuFlyoutItem() { Text = "mark as unplayed" };
-            mark_as_unplayed.DataContext = (sender as FrameworkElement).DataContext;
-            mark_as_unplayed.Click += Mark_as_unplayed_Click;
-
-            if (showAndPodcast.Show.Position == showAndPodcast.Show.Total)
+            if (!showAndPodcast.Show.IsPlaying)
             {
-                menu.Items.Add(mark_as_unplayed);
-            }
-            else
-            {
-                menu.Items.Add(mark_as_played);
-            }
+                apesode_ListView.SelectedItem = (sender as FrameworkElement).DataContext;
+                var menu = new MenuFlyout();
+                var mark_as_finished = new MenuFlyoutItem() { Text = "mark as finished" };
+                mark_as_finished.DataContext = (sender as FrameworkElement).DataContext;
+                mark_as_finished.Click += Mark_as_played_Click;
 
-            UIElement b = sender as UIElement;
-            b.ContextFlyout = menu;
-            menu.ShowAt(sender as UIElement, e.GetPosition(sender as UIElement));
+
+                var mark_as_unplayed = new MenuFlyoutItem() { Text = "mark as unplayed" };
+                mark_as_unplayed.DataContext = (sender as FrameworkElement).DataContext;
+                mark_as_unplayed.Click += Mark_as_unplayed_Click;
+
+                if (!(showAndPodcast.Show.Position <= 0))
+                {
+                    menu.Items.Add(mark_as_unplayed);
+                }
+                if (!(showAndPodcast.Show.Position >= showAndPodcast.Show.Total))
+                {
+                    menu.Items.Add(mark_as_finished);
+                }
+
+                UIElement b = sender as UIElement;
+                b.ContextFlyout = menu;
+                menu.ShowAt(sender as UIElement, e.GetPosition(sender as UIElement));
+            }
 
         }
 
