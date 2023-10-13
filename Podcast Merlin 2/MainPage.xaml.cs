@@ -257,10 +257,6 @@ Podcasts.Add(item);
 
 
         }
-        //private async Task add_podcast_on_end(string url, ObservableCollection<Podcast> pods)
-        //{
-        //    pods.Add(await Podcast.get_podcast_from_url_string(url));
-        //}
         public async Task pull_new_info_about_podcast_put_on_file(ObservableCollection<Podcast> currentPodcasts)
         {
             var Pods = await PodsDb.get_all_podcasts();
@@ -472,27 +468,39 @@ Please don't close the app."
                 MainPage.Server_Details.token = token;
             }
         }
-        private static async Task<List<ShowAndPodcast>> getRangeForOnePodcast(int pageIndex, int pageSize, Podcast pod)
+        private static async Task<List<ShowAndPodcast>> getRangeForOnePodcast(int pageIndex, int pageSize, Podcast pod,Func<ShowAndPodcast, bool> filter = null)
         {
             var a = await ShowsDb.get_all_shows_for_Podcast(pod ,pageSize, pageSize * pageIndex);
             var showsAndPodcasts = new List<ShowAndPodcast>();
-
+            var isThereFilter = filter != null;
             foreach (var show in a)
             {
-                showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = pod, Show = show });
+                var new_member = new ShowAndPodcast() { Podcast = pod, Show = show };
+                if (isThereFilter)
+                {
+                    if (filter(new_member))
+                    {
+                        showsAndPodcasts.Add(new_member);
+                    }
+                }
+                else
+                    showsAndPodcasts.Add(new_member);
             }
             return showsAndPodcasts;
         }
         public class OnePodcastShowsList : IIncrementalSource<ShowAndPodcast>
         {
             public static Podcast podcast;
+            private static Func<ShowAndPodcast, bool> filter = null;
             public ObservableCollection<ShowAndPodcast> Shows = new ObservableCollection<ShowAndPodcast>();
             public static int lastIndex;
+
+            public static Func<ShowAndPodcast, bool> Filter { get => filter; set => filter = value; }
 
             public async Task<IEnumerable<ShowAndPodcast>> GetPagedItemsAsync(int pageIndex, int pageSize, CancellationToken cancellationToken = default)
             {
                 var show = MainWindow.mediaPlayer_with_poster.ShowLastPlayed;
-                var a = await getRangeForOnePodcast(pageIndex: pageIndex, pageSize: pageSize, podcast);
+                var a = await getRangeForOnePodcast(pageIndex: pageIndex, pageSize: pageSize, podcast, Filter);
 
                 if (show != null)
                 {
@@ -546,7 +554,7 @@ Please don't close the app."
                 Podcasts.Add(item);
             }
         }
-        private static async Task<List<ShowAndPodcast>> getRangeForAllPodcasts(int pageIndex, int pageSize)
+        private static async Task<List<ShowAndPodcast>> getRangeForAllPodcasts(int pageIndex, int pageSize, Func<ShowAndPodcast, bool> filter = null )
         {
             var a = await ShowsDb.get_all_shows(pageSize, pageSize* pageIndex);
                     
@@ -558,19 +566,33 @@ Please don't close the app."
                     }
                     foreach (var show in a)
                     {
-                        showsAndPodcasts.Add(new ShowAndPodcast() { Podcast = podArr[show.PodcastID], Show = show });
+                var newMemeber = new ShowAndPodcast() { Podcast = podArr[show.PodcastID], Show = show };
+                if (filter != null)
+                {
+                    if (filter(newMemeber))
+                    {
+                        showsAndPodcasts.Add(newMemeber);
                     }
+                }
+                else
+                {
+                    showsAndPodcasts.Add(newMemeber);
+                }
+            }
             return showsAndPodcasts;
         }
         public class AllPodcastsShowsList : IIncrementalSource<ShowAndPodcast>
         {
             public ObservableCollection<ShowAndPodcast> Shows = new ObservableCollection<ShowAndPodcast>();
             public static int lastIndex;
+            private static Func<ShowAndPodcast, bool> filter = null;
+
+            public static Func<ShowAndPodcast, bool> Filter { get => filter; set => filter = value; }
 
             public async Task<IEnumerable<ShowAndPodcast>> GetPagedItemsAsync(int pageIndex, int pageSize, CancellationToken cancellationToken = default)
             {
                 var show = MainWindow.mediaPlayer_with_poster.ShowLastPlayed;
-                var a = await getRangeForAllPodcasts(pageIndex: pageIndex, pageSize: pageSize);
+                var a = await getRangeForAllPodcasts(pageIndex: pageIndex, pageSize: pageSize, filter);
                 
                 if(show != null)
                 {

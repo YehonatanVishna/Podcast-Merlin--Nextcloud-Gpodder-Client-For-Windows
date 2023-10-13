@@ -44,7 +44,17 @@ namespace PodMerForWinUi
         public ShowsFeed()
         {
             this.InitializeComponent();
-            
+            SumOfFiltersFunctions = (showPod) =>
+            {
+                var res = true;
+                foreach (var fun in DictOfFilters)
+                {
+                    res = res && fun.Value(showPod);
+                }
+                return res;
+            };
+            AllPodcastsShowsList.Filter = SumOfFiltersFunctions;
+            OnePodcastShowsList.Filter = SumOfFiltersFunctions;
         }
 
 
@@ -87,25 +97,7 @@ namespace PodMerForWinUi
 
             MainWindow.RefreshFunc = () => Refresh();
         }
-        //class Refresh_Btn_Command : ICommand
-        //{
-        //    public event EventHandler CanExecuteChanged;
-        //    public static Task LastRefresh;
-        //    public bool CanExecute(object parameter)
-        //    {
-        //        return ((LastRefresh == null) || (LastRefresh != null && LastRefresh.IsCompleted));
-        //        return false;
-        //    }
-
-        //    public void Execute(object parameter)
-        //    {
-        //        ShowsFeed showsFeed = parameter as ShowsFeed;
-        //        if(showsFeed.feedContentType == FeedContent.OnePodcast)
-        //        {
-                    
-        //        }
-        //    }
-        //}
+        
         private Task lastSyncTask;
         private DispatcherTimer update_position_dispach_timer;
         private async void playShow(ShowAndPodcast PodcastAndShow)
@@ -207,6 +199,11 @@ namespace PodMerForWinUi
         private void Update_position_dispach_timer_Tick(object sender, object e)
         {
             MainWindow.mediaPlayer_with_poster.ShowLastPlayed.Show.Position = (int)Math.Round(MainWindow.MediaPlayer.MediaPlayer.PlaybackSession.Position.TotalSeconds);
+            Task.Run(() =>
+            {
+                remove_if_nessery(MainWindow.mediaPlayer_with_poster.ShowLastPlayed);
+                
+            });
         }
 
         public ulong lastNav = 0;
@@ -474,6 +471,10 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
                 try
                 {
                     await Sync.SyncService.SendAction(showPod, 0);
+                    if (!SumOfFiltersFunctions(showPod))
+                    {
+                        apesode_ListView.Items.Remove(showPod);
+                    }
                 }
                 catch
                 {
@@ -490,7 +491,8 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
             {
                 try
                 {
-                    await Sync.SyncService.SendAction(showPod, showPod.Show.Total);
+                    Sync.SyncService.SendAction(showPod, showPod.Show.Total);
+                    remove_if_nessery(showPod);
                 }
                 catch
                 {
@@ -499,5 +501,75 @@ color: rgb({linkColor.R},{linkColor.G},{linkColor.B});
             });
             
         }
+        private async Task remove_if_nessery(ShowAndPodcast showPod)
+        {
+            if (apesode_ListView.Items.Contains(showPod) && !SumOfFiltersFunctions(showPod))
+            {
+                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.High, async () =>
+                {
+                    try
+                    {
+                        if (feedContentType == FeedContent.OnePodcast)
+                            (pageIncrementalLoadingSorce as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).Remove(showPod);
+                        else
+                        {
+                            if (feedContentType == FeedContent.AllPodcasts)
+                                (pageIncrementalLoadingSorce as IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>).Remove(showPod);
+
+                        }
+                        //await refreshFromCashAsync();
+                    }
+                    catch
+                    {
+
+                    }
+                });
+            }
+        }
+
+        private async void Filter_finished_Toggled(object sender, RoutedEventArgs e)
+        {
+            var toggle = sender as ToggleSwitch;
+            if(toggle.IsOn)
+            {
+                DictOfFilters.Add(kind_of_filter.finished, (showPod) =>
+                {
+                    return showPod.Show.Total-10 >= showPod.Show.Position;
+                });
+            }
+            else
+            {
+                if (!toggle.IsOn)
+                {
+                    DictOfFilters.Remove(kind_of_filter.finished);
+                }
+            }
+            await refreshFromCashAsync();
+        }
+        private async Task refreshFromCashAsync()
+        {
+            if (feedContentType == FeedContent.OnePodcast)
+            {
+                await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                {
+                    await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<OnePodcastShowsList, ShowAndPodcast>).RefreshAsync();
+                    await apesode_ListView.LoadMoreItemsAsync();
+                });
+            }
+            else
+            {
+                if (feedContentType == FeedContent.AllPodcasts)
+                {
+                    await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
+                    {
+                        await (pageIncrementalLoadingSorce as IncrementalLoadingCollection<AllPodcastsShowsList, ShowAndPodcast>).RefreshAsync();
+                        await apesode_ListView.LoadMoreItemsAsync();
+                    });
+                }
+            }
+        }
+        public Dictionary<kind_of_filter, Func<ShowAndPodcast, bool>> DictOfFilters =  new Dictionary<kind_of_filter, Func<ShowAndPodcast, bool>>();
+        public enum kind_of_filter { finished};
+        public Func<ShowAndPodcast, bool> SumOfFiltersFunctions = (showPod) => true;
     }
 }

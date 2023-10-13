@@ -63,7 +63,7 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
         public static MainPage mainPage;
         public static CoreDispatcher dispatcher;
         public ApplicationViewTitleBar titleBar1;
-        public Microsoft.UI.Xaml.Controls.ProgressRing GlobalRefreshRing;
+        private Microsoft.UI.Xaml.Controls.ProgressRing globalRefreshRing;
         public MainWindow()
         {
             Task.Run(async () =>
@@ -248,6 +248,9 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
                 windowTitleText = value;
             }
         }
+
+        public Microsoft.UI.Xaml.Controls.ProgressRing GlobalRefreshRing { get => globalRefreshRing; set => globalRefreshRing = value; }
+
         private void back_btn_Click(object sender, RoutedEventArgs e)
         {
             if (fff.CanGoBack)
@@ -266,6 +269,8 @@ Windows.Storage.ApplicationData.Current.LocalSettings;
         {
             await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, async () =>
             {
+                refresh_ring.IsActive = false;
+                await Task.Delay(100);
                 refresh_ring.IsActive = true;
             });
             
