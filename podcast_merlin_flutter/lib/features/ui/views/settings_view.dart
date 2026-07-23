@@ -1,0 +1,219 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/providers/app_providers.dart';
+import '../../sync/secure_storage_service.dart';
+
+class SettingsView extends ConsumerStatefulWidget {
+  const SettingsView({super.key});
+
+  @override
+  ConsumerState<SettingsView> createState() => _SettingsViewState();
+}
+
+class _SettingsViewState extends ConsumerState<SettingsView> {
+  final _serverController = TextEditingController();
+  final _userController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  bool _isLoading = true;
+  bool _isTesting = false;
+  String? _statusMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final storage = ref.read(secureStorageProvider);
+    _serverController.text = await storage.read(SecureStorageService.keyServerUrl) ?? '';
+    _userController.text = await storage.read(SecureStorageService.keyUsername) ?? '';
+    _passwordController.text = await storage.read(SecureStorageService.keyPassword) ?? '';
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveCredentials() async {
+    final storage = ref.read(secureStorageProvider);
+    await storage.write(SecureStorageService.keyServerUrl, _serverController.text.trim());
+    await storage.write(SecureStorageService.keyUsername, _userController.text.trim());
+    await storage.write(SecureStorageService.keyPassword, _passwordController.text.trim());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Credentials saved successfully')),
+      );
+    }
+  }
+
+  Future<void> _testConnection() async {
+    setState(() {
+      _isTesting = true;
+      _statusMessage = null;
+    });
+
+    final apiClient = ref.read(apiClientProvider);
+    final isOk = await apiClient.checkConnection(
+      serverUrl: _serverController.text.trim(),
+      username: _userController.text.trim(),
+      password: _passwordController.text.trim(),
+    );
+
+    setState(() {
+      _isTesting = false;
+      _statusMessage = isOk
+          ? 'Connected successfully to Nextcloud gPodder!'
+          : 'Connection failed. Check server URL or credentials.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Nextcloud gPodder Settings'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+            Center(
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 80,
+                      height: 80,
+                      cacheWidth: 160,
+                      cacheHeight: 160,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.podcasts, size: 64),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Podcast Merlin',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Nextcloud gPodder Client • v2.0.0',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withValues(alpha: 0.7),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+                const Text(
+                  'Nextcloud gPodder Server Integration',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Synchronize your podcast subscriptions and playback positions across Windows, Android, macOS, and Linux.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: _serverController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nextcloud Server URL',
+                    hintText: 'https://nextcloud.example.com',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.cloud),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _userController,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'App Password or Password',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (_statusMessage != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _statusMessage!.contains('successfully')
+                          ? Colors.green.withValues(alpha: 0.15)
+                          : Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _statusMessage!,
+                      style: TextStyle(
+                        color: _statusMessage!.contains('successfully')
+                            ? Colors.green[800]
+                            : Colors.red[800],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: _isTesting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.sync),
+                        label: const Text('Test Connection'),
+                        onPressed: _isTesting ? null : _testConnection,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.save),
+                        label: const Text('Save Credentials'),
+                        onPressed: _saveCredentials,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
