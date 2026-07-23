@@ -77,28 +77,107 @@ final podcastsNotifierProvider =
   );
 });
 
-class EpisodesNotifier extends StateNotifier<AsyncValue<List<Episode>>> {
+class EpisodesState {
+  final List<Episode> episodes;
+  final bool isLoading;
+  final bool isLoadingMore;
+  final bool hasMore;
+  final String? error;
+  final EpisodeFilter filter;
+
+  const EpisodesState({
+    this.episodes = const [],
+    this.isLoading = false,
+    this.isLoadingMore = false,
+    this.hasMore = true,
+    this.error,
+    this.filter = EpisodeFilter.all,
+  });
+
+  EpisodesState copyWith({
+    List<Episode>? episodes,
+    bool? isLoading,
+    bool? isLoadingMore,
+    bool? hasMore,
+    String? error,
+    EpisodeFilter? filter,
+  }) {
+    return EpisodesState(
+      episodes: episodes ?? this.episodes,
+      isLoading: isLoading ?? this.isLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      hasMore: hasMore ?? this.hasMore,
+      error: error,
+      filter: filter ?? this.filter,
+    );
+  }
+}
+
+class EpisodesNotifier extends StateNotifier<EpisodesState> {
   final DatabaseHelper _db;
   final int? _podcastId;
+  static const int pageSize = 25;
 
-  EpisodesNotifier(this._db, this._podcastId) : super(const AsyncValue.loading()) {
+  EpisodesNotifier(this._db, this._podcastId) : super(const EpisodesState(isLoading: true)) {
     loadEpisodes();
   }
 
-  Future<void> loadEpisodes() async {
-    state = const AsyncValue.loading();
+  Future<void> loadEpisodes({EpisodeFilter? filter}) async {
+    final currentFilter = filter ?? state.filter;
+    state = state.copyWith(isLoading: true, error: null, filter: currentFilter);
     try {
       final list = _podcastId != null
-          ? await _db.getEpisodesForPodcast(_podcastId)
-          : await _db.getAllEpisodes();
-      state = AsyncValue.data(list);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
+          ? await _db.getEpisodesForPodcast(_podcastId!, limit: pageSize, offset: 0, filter: currentFilter)
+          : await _db.getAllEpisodes(limit: pageSize, offset: 0, filter: currentFilter);
+
+      state = EpisodesState(
+        episodes: list,
+        isLoading: false,
+        isLoadingMore: false,
+        hasMore: list.length >= pageSize,
+        filter: currentFilter,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<void> loadMoreEpisodes() async {
+    if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
+
+    state = state.copyWith(isLoadingMore: true);
+    try {
+      final offset = state.episodes.length;
+      final newEpisodes = _podcastId != null
+          ? await _db.getEpisodesForPodcast(_podcastId!, limit: pageSize, offset: offset, filter: state.filter)
+          : await _db.getAllEpisodes(limit: pageSize, offset: offset, filter: state.filter);
+
+      if (newEpisodes.isEmpty) {
+        state = state.copyWith(isLoadingMore: false, hasMore: false);
+      } else {
+        state = state.copyWith(
+          episodes: [...state.episodes, ...newEpisodes],
+          isLoadingMore: false,
+          hasMore: newEpisodes.length >= pageSize,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(isLoadingMore: false);
+    }
+  }
+
+  Future<void> setFilter(EpisodeFilter filter) async {
+    if (state.filter == filter && !state.isLoading) return;
+    await loadEpisodes(filter: filter);
+  }
+
+  Future<void> refresh() async {
+    await loadEpisodes();
   }
 }
 
 final episodesNotifierProvider = StateNotifierProvider.autoDispose
-    .family<EpisodesNotifier, AsyncValue<List<Episode>>, int?>((ref, podcastId) {
+    .family<EpisodesNotifier, EpisodesState, int?>((ref, podcastId) {
   return EpisodesNotifier(ref.watch(databaseProvider), podcastId);
 });
+

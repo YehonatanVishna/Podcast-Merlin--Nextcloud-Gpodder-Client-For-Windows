@@ -40,26 +40,25 @@ class Podcast {
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,
-      'rss_url': rssUrl,
+      'rssUrl': rssUrl,
       'title': title,
-      'image_url': imageUrl,
+      'imageUrl': imageUrl,
       'description': description,
-      'link': link,
-      'last_updated': lastUpdated?.toIso8601String(),
+      'websiteUrl': link,
+      'lastUpdated': lastUpdated?.toIso8601String(),
     };
   }
 
   factory Podcast.fromMap(Map<String, dynamic> map) {
+    final lastUpdatedVal = map['lastUpdated'] ?? map['last_updated'];
     return Podcast(
       id: map['id'] as int?,
-      rssUrl: (map['rss_url'] ?? '').toString(),
+      rssUrl: (map['rssUrl'] ?? map['rss_url'] ?? '').toString(),
       title: (map['title'] ?? 'Untitled Podcast').toString(),
-      imageUrl: (map['image_url'] ?? '').toString(),
+      imageUrl: (map['imageUrl'] ?? map['image_url'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
-      link: (map['link'] ?? '').toString(),
-      lastUpdated: map['last_updated'] != null
-          ? DateTime.tryParse(map['last_updated'].toString())
-          : null,
+      link: (map['websiteUrl'] ?? map['link'] ?? '').toString(),
+      lastUpdated: lastUpdatedVal != null ? DateTime.tryParse(lastUpdatedVal.toString()) : null,
     );
   }
 }

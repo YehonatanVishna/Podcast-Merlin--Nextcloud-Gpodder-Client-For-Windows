@@ -1,3 +1,5 @@
+enum EpisodeFilter { all, unplayed, finished }
+
 class Episode {
   final int? id;
   final int? podcastId;
@@ -72,36 +74,35 @@ class Episode {
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,
-      if (podcastId != null) 'podcast_id': podcastId,
+      if (podcastId != null) 'podcastId': podcastId,
       'guid': guid,
       'title': title,
-      'media_url': mediaUrl,
+      'mediaUrl': mediaUrl,
       'description': description,
-      'published_at': publishedAt?.toIso8601String(),
+      'pubDate': publishedAt?.toIso8601String(),
       'duration': duration,
       'position': position,
-      'is_played': isPlayed ? 1 : 0,
-      'image_url': imageUrl,
-      'podcast_rss': podcastRss,
+      'isPlayed': isPlayed ? 1 : 0,
+      'imageUrl': imageUrl,
     };
   }
 
   factory Episode.fromMap(Map<String, dynamic> map) {
+    final pubDateVal = map['pubDate'] ?? map['published_at'];
     return Episode(
       id: map['id'] as int?,
-      podcastId: map['podcast_id'] as int?,
+      podcastId: (map['podcastId'] ?? map['podcast_id']) as int?,
       guid: (map['guid'] ?? '').toString(),
       title: (map['title'] ?? 'Untitled Episode').toString(),
-      mediaUrl: (map['media_url'] ?? '').toString(),
+      mediaUrl: (map['mediaUrl'] ?? map['media_url'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
-      publishedAt: map['published_at'] != null
-          ? DateTime.tryParse(map['published_at'].toString())
-          : null,
+      publishedAt: pubDateVal != null ? DateTime.tryParse(pubDateVal.toString()) : null,
       duration: (map['duration'] as num?)?.toInt() ?? 0,
       position: (map['position'] as num?)?.toInt() ?? 0,
-      isPlayed: (map['is_played'] as int? ?? 0) == 1,
-      imageUrl: (map['image_url'] ?? '').toString(),
-      podcastRss: (map['podcast_rss'] ?? '').toString(),
+      isPlayed: (map['isPlayed'] ?? map['is_played'] as int? ?? 0) == 1,
+      imageUrl: (map['imageUrl'] ?? map['image_url'] ?? '').toString(),
+      podcastRss: (map['podcastRss'] ?? map['podcast_rss'] ?? '').toString(),
     );
   }
 }
+
