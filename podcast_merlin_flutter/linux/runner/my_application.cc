@@ -19,10 +19,50 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+// Helper to set window icon using multiple standard sizes for Linux desktop environments
+static void set_window_icon(GtkWindow* window) {
+  gchar* icon_path = nullptr;
+
+  if (g_file_test("assets/images/logo.png", G_FILE_TEST_EXISTS)) {
+    icon_path = g_strdup("assets/images/logo.png");
+  } else {
+    gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+    if (exe_path != nullptr) {
+      g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path);
+      g_autoptr(GFile) exe_dir = g_file_get_parent(exe_file);
+      gchar* exe_dir_path = g_file_get_path(exe_dir);
+      icon_path = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", "logo.png", nullptr);
+      g_free(exe_path);
+      g_free(exe_dir_path);
+    }
+  }
+
+  if (icon_path != nullptr) {
+    if (g_file_test(icon_path, G_FILE_TEST_EXISTS)) {
+      const int sizes[] = {16, 32, 48, 64, 128, 256};
+      GList* icon_list = nullptr;
+      for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); ++i) {
+        g_autoptr(GError) error = nullptr;
+        GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file_at_scale(
+            icon_path, sizes[i], sizes[i], TRUE, &error);
+        if (pixbuf != nullptr) {
+          icon_list = g_list_append(icon_list, pixbuf);
+        }
+      }
+      if (icon_list != nullptr) {
+        gtk_window_set_icon_list(window, icon_list);
+        gtk_window_set_default_icon_list(icon_list);
+        g_list_free_full(icon_list, g_object_unref);
+      }
+    }
+    g_free(icon_path);
+  }
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   g_set_application_name("Podcast Merlin");
-  g_set_prgname("podcast_merlin_flutter");
+  g_set_prgname(APPLICATION_ID);
 
   MyApplication* self = MY_APPLICATION(application);
   GtkWindow* window =
@@ -56,22 +96,7 @@ static void my_application_activate(GApplication* application) {
   }
 
   // Set Linux taskbar and window icon
-  g_autoptr(GError) icon_error = nullptr;
-  gtk_window_set_icon_from_file(window, "assets/images/logo.png", &icon_error);
-  if (icon_error != nullptr) {
-    g_clear_error(&icon_error);
-    gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
-    if (exe_path != nullptr) {
-      g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path);
-      g_autoptr(GFile) exe_dir = g_file_get_parent(exe_file);
-      gchar* exe_dir_path = g_file_get_path(exe_dir);
-      gchar* icon_path = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", "logo.png", nullptr);
-      gtk_window_set_icon_from_file(window, icon_path, nullptr);
-      g_free(exe_path);
-      g_free(exe_dir_path);
-      g_free(icon_path);
-    }
-  }
+  set_window_icon(window);
 
   gtk_window_set_default_size(window, 1280, 720);
 
