@@ -1,8 +1,11 @@
 import '../podcasts/rss_feed_parser.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/podcast.dart';
+import '../../core/models/sync_status.dart';
 import 'gpodder_api_client.dart';
 import 'secure_storage_service.dart';
+
+typedef SyncProgressCallback = void Function(SyncStage stage, String? detail);
 
 class SyncService {
   final GPodderApiClient _apiClient;
@@ -21,7 +24,7 @@ class SyncService {
         _rssParser = rssParser ?? RssFeedParser();
 
   /// Full synchronization workflow (Pull remote changes, push pending actions, refresh RSS)
-  Future<bool> performFullSync() async {
+  Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
     final serverUrl = await _storage.read(SecureStorageService.keyServerUrl);
     final username = await _storage.read(SecureStorageService.keyUsername);
     final password = await _storage.read(SecureStorageService.keyPassword);
@@ -32,9 +35,11 @@ class SyncService {
 
     try {
       // 1. Push pending local actions first (with collapsing)
+      onProgress?.call(SyncStage.pushingActions, 'Pushing local actions to gPodder...');
       await _pushPendingActions(serverUrl, username, password);
 
       // 2. Fetch remote subscription changes
+      onProgress?.call(SyncStage.fetchingSubscriptions, 'Fetching subscriptions from gPodder...');
       final lastTsRaw = await _storage.read(SecureStorageService.keyLastActionTimestamp) ?? '0';
       final lastTs = int.tryParse(lastTsRaw) ?? 0;
 
@@ -54,7 +59,8 @@ class SyncService {
         for (final rssUrl in addList) {
           final existing = await _db.getPodcastByRssUrl(rssUrl);
           if (existing == null) {
-            await fetchAndSavePodcastFeed(rssUrl);
+            onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
+            await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
           }
         }
 
@@ -68,6 +74,7 @@ class SyncService {
       }
 
       // 3. Fetch remote episode actions
+      onProgress?.call(SyncStage.fetchingEpisodeActions, 'Syncing episode playback with gPodder...');
       final remoteActions = await _apiClient.fetchEpisodeActions(
         serverUrl: serverUrl,
         username: username,
@@ -122,10 +129,15 @@ class SyncService {
   }
 
   /// Download and parse RSS feed for a podcast URL, then store to database
-  Future<Podcast?> fetchAndSavePodcastFeed(String rssUrl) async {
+  Future<Podcast?> fetchAndSavePodcastFeed(
+    String rssUrl, {
+    SyncProgressCallback? onProgress,
+  }) async {
+    onProgress?.call(SyncStage.fetchingFeed, 'Downloading & parsing RSS feed...');
     final feedResult = await _rssParser.parseFeedFromUrl(rssUrl);
     if (feedResult == null) return null;
 
+    onProgress?.call(SyncStage.fetchingFeed, 'Saving podcast: ${feedResult.title}');
     final podcast = Podcast(
       rssUrl: rssUrl,
       title: feedResult.title,
@@ -149,3 +161,4 @@ class SyncService {
     return savedPod ?? podcast;
   }
 }
+

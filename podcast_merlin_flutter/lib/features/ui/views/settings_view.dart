@@ -184,6 +184,53 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                   const SizedBox(height: 16),
                 ],
+                Consumer(
+                  builder: (context, ref, child) {
+                    final syncStatus = ref.watch(syncStatusNotifierProvider);
+                    final isSyncing = syncStatus.isSyncing;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isSyncing) ...[
+                          Row(
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  syncStatus.currentTask ?? 'Syncing with gPodder...',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        OutlinedButton.icon(
+                          icon: isSyncing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync),
+                          label: Text(isSyncing ? 'Syncing...' : 'Sync Now with gPodder'),
+                          onPressed: isSyncing
+                              ? null
+                              : () {
+                                  ref.read(podcastsNotifierProvider.notifier).refreshAll();
+                                },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
@@ -194,7 +241,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                                 height: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Icon(Icons.sync),
+                            : const Icon(Icons.cloud_done),
                         label: const Text('Test Connection'),
                         onPressed: _isTesting ? null : _testConnection,
                       ),
@@ -217,3 +264,4 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 }
+

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/database_helper.dart';
 import '../models/episode.dart';
 import '../models/podcast.dart';
+import '../models/sync_status.dart';
 import '../../features/player/audio_player_service.dart';
 import '../../features/sync/gpodder_api_client.dart';
 import '../../features/sync/secure_storage_service.dart';
@@ -19,6 +20,88 @@ final syncServiceProvider = Provider<SyncService>((ref) {
   );
 });
 
+class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
+  final SyncService _sync;
+
+  SyncStatusNotifier(this._sync) : super(const SyncStatusState());
+
+  Future<bool> performFullSync() async {
+    if (state.isSyncing) return false;
+    state = const SyncStatusState(
+      isSyncing: true,
+      stage: SyncStage.connectingGpodder,
+      currentTask: 'Connecting to gPodder...',
+    );
+
+    try {
+      final success = await _sync.performFullSync(
+        onProgress: (stage, detail) {
+          state = SyncStatusState(
+            isSyncing: true,
+            stage: stage,
+            currentTask: detail,
+          );
+        },
+      );
+      state = SyncStatusState(
+        isSyncing: false,
+        stage: success ? SyncStage.completed : SyncStage.error,
+        currentTask: null,
+        error: success ? null : 'gPodder sync completed with warnings',
+      );
+      return success;
+    } catch (e) {
+      state = SyncStatusState(
+        isSyncing: false,
+        stage: SyncStage.error,
+        error: e.toString(),
+      );
+      return false;
+    }
+  }
+
+  Future<Podcast?> fetchAndSaveFeed(String rssUrl) async {
+    state = SyncStatusState(
+      isSyncing: true,
+      stage: SyncStage.fetchingFeed,
+      currentTask: 'Downloading & parsing RSS feed...',
+      activeFeedUrl: rssUrl,
+    );
+
+    try {
+      final pod = await _sync.fetchAndSavePodcastFeed(
+        rssUrl,
+        onProgress: (stage, detail) {
+          state = SyncStatusState(
+            isSyncing: true,
+            stage: stage,
+            currentTask: detail,
+            activeFeedUrl: rssUrl,
+          );
+        },
+      );
+      state = SyncStatusState(
+        isSyncing: false,
+        stage: pod != null ? SyncStage.completed : SyncStage.error,
+        error: pod == null ? 'Failed to parse RSS feed' : null,
+      );
+      return pod;
+    } catch (e) {
+      state = SyncStatusState(
+        isSyncing: false,
+        stage: SyncStage.error,
+        error: e.toString(),
+      );
+      return null;
+    }
+  }
+}
+
+final syncStatusNotifierProvider =
+    StateNotifierProvider<SyncStatusNotifier, SyncStatusState>((ref) {
+  return SyncStatusNotifier(ref.watch(syncServiceProvider));
+});
+
 final audioHandlerProvider = Provider<MerlinAudioHandler>((ref) {
   final handler = MerlinAudioHandler();
   ref.onDispose(() => handler.dispose());
@@ -27,14 +110,17 @@ final audioHandlerProvider = Provider<MerlinAudioHandler>((ref) {
 
 class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
   final DatabaseHelper _db;
-  final SyncService _sync;
+  final SyncStatusNotifier _syncStatusNotifier;
 
-  PodcastsNotifier(this._db, this._sync) : super(const AsyncValue.loading()) {
+  PodcastsNotifier(this._db, this._syncStatusNotifier) : super(const AsyncValue.loading()) {
     loadPodcasts();
   }
 
   Future<void> loadPodcasts() async {
-    state = const AsyncValue.loading();
+    final previousData = state.valueOrNull;
+    if (previousData == null) {
+      state = const AsyncValue.loading();
+    }
     try {
       final list = await _db.getAllPodcasts();
       state = AsyncValue.data(list);
@@ -44,13 +130,11 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
   }
 
   Future<bool> addPodcastFeed(String rssUrl) async {
-    try {
-      final saved = await _sync.fetchAndSavePodcastFeed(rssUrl);
-      if (saved != null) {
-        await loadPodcasts();
-        return true;
-      }
-    } catch (_) {}
+    final saved = await _syncStatusNotifier.fetchAndSaveFeed(rssUrl);
+    if (saved != null) {
+      await loadPodcasts();
+      return true;
+    }
     return false;
   }
 
@@ -62,10 +146,8 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
   }
 
   Future<void> refreshAll() async {
-    try {
-      await _sync.performFullSync();
-      await loadPodcasts();
-    } catch (_) {}
+    await _syncStatusNotifier.performFullSync();
+    await loadPodcasts();
   }
 }
 
@@ -73,7 +155,7 @@ final podcastsNotifierProvider =
     StateNotifierProvider<PodcastsNotifier, AsyncValue<List<Podcast>>>((ref) {
   return PodcastsNotifier(
     ref.watch(databaseProvider),
-    ref.watch(syncServiceProvider),
+    ref.watch(syncStatusNotifierProvider.notifier),
   );
 });
 
@@ -115,10 +197,12 @@ class EpisodesState {
 
 class EpisodesNotifier extends StateNotifier<EpisodesState> {
   final DatabaseHelper _db;
+  final SyncStatusNotifier _syncStatusNotifier;
   final int? _podcastId;
   static const int pageSize = 25;
 
-  EpisodesNotifier(this._db, this._podcastId) : super(const EpisodesState(isLoading: true)) {
+  EpisodesNotifier(this._db, this._syncStatusNotifier, this._podcastId)
+      : super(const EpisodesState(isLoading: true)) {
     loadEpisodes();
   }
 
@@ -173,13 +257,23 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     await loadEpisodes(filter: filter);
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({Podcast? podcast}) async {
+    if (podcast != null && podcast.rssUrl.isNotEmpty) {
+      await _syncStatusNotifier.fetchAndSaveFeed(podcast.rssUrl);
+    } else {
+      await _syncStatusNotifier.performFullSync();
+    }
     await loadEpisodes();
   }
 }
 
 final episodesNotifierProvider = StateNotifierProvider.autoDispose
     .family<EpisodesNotifier, EpisodesState, int?>((ref, podcastId) {
-  return EpisodesNotifier(ref.watch(databaseProvider), podcastId);
+  return EpisodesNotifier(
+    ref.watch(databaseProvider),
+    ref.watch(syncStatusNotifierProvider.notifier),
+    podcastId,
+  );
 });
+
 

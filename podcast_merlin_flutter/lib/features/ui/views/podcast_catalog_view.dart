@@ -11,6 +11,7 @@ class PodcastCatalogView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final podcastsState = ref.watch(podcastsNotifierProvider);
+    final syncStatus = ref.watch(syncStatusNotifierProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -30,139 +31,225 @@ class PodcastCatalogView extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Sync & Refresh All',
-            onPressed: () {
-              ref.read(podcastsNotifierProvider.notifier).refreshAll();
-            },
+            icon: syncStatus.isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: syncStatus.isSyncing ? (syncStatus.currentTask ?? 'Syncing...') : 'Sync & Refresh All',
+            onPressed: syncStatus.isSyncing
+                ? null
+                : () {
+                    ref.read(podcastsNotifierProvider.notifier).refreshAll();
+                  },
           ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Subscribe to RSS Feed',
-            onPressed: () => _showAddPodcastDialog(context, ref),
+            onPressed: syncStatus.isSyncing ? null : () => _showAddPodcastDialog(context, ref),
           ),
         ],
       ),
-      body: podcastsState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 12),
-              Text('Error loading catalog: $err'),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.read(podcastsNotifierProvider.notifier).loadPodcasts(),
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-        data: (podcasts) {
-          if (podcasts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
+        children: [
+          if (syncStatus.isSyncing) ...[
+            const LinearProgressIndicator(minHeight: 3),
+            Container(
+              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
                 children: [
-                  const Icon(Icons.podcasts, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No Podcast Subscriptions Yet',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  const SizedBox(height: 8),
-                  const Text('Click + to add an RSS feed or sync with Nextcloud'),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add RSS Feed'),
-                    onPressed: () => _showAddPodcastDialog(context, ref),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      syncStatus.currentTask ?? 'Processing...',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
                   ),
                 ],
               ),
-            );
-          }
-
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final crossAxisCount = constraints.maxWidth > 900
-                  ? 5
-                  : (constraints.maxWidth > 600 ? 3 : 2);
-
-              return GridView.builder(
-                padding: const EdgeInsets.all(16),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  childAspectRatio: 0.75,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+            ),
+          ],
+          Expanded(
+            child: podcastsState.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 12),
+                    Text('Error loading catalog: $err'),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => ref.read(podcastsNotifierProvider.notifier).loadPodcasts(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
-                itemCount: podcasts.length,
-                itemBuilder: (context, index) {
-                  final pod = podcasts[index];
-                  return _PodcastCard(
-                    podcast: pod,
-                    onTap: () => onPodcastSelected?.call(pod),
-                    onDelete: () {
-                      ref.read(podcastsNotifierProvider.notifier).removePodcast(pod.rssUrl);
-                    },
+              ),
+              data: (podcasts) {
+                if (podcasts.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.podcasts, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No Podcast Subscriptions Yet',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text('Click + to add an RSS feed or sync with Nextcloud'),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add RSS Feed'),
+                          onPressed: () => _showAddPodcastDialog(context, ref),
+                        ),
+                      ],
+                    ),
                   );
-                },
-              );
-            },
-          );
-        },
+                }
+
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final crossAxisCount = constraints.maxWidth > 900
+                        ? 5
+                        : (constraints.maxWidth > 600 ? 3 : 2);
+
+                    return GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        childAspectRatio: 0.75,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                      ),
+                      itemCount: podcasts.length,
+                      itemBuilder: (context, index) {
+                        final pod = podcasts[index];
+                        return _PodcastCard(
+                          podcast: pod,
+                          onTap: () => onPodcastSelected?.call(pod),
+                          onDelete: () {
+                            ref.read(podcastsNotifierProvider.notifier).removePodcast(pod.rssUrl);
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   void _showAddPodcastDialog(BuildContext context, WidgetRef ref) {
     final controller = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Subscribe to Podcast Feed'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'https://example.com/podcast.xml',
-            labelText: 'RSS Feed URL',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final url = controller.text.trim();
-              if (url.isNotEmpty) {
-                Navigator.pop(dialogCtx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Downloading & parsing RSS feed...')),
-                );
-                final success = await ref
-                    .read(podcastsNotifierProvider.notifier)
-                    .addPodcastFeed(url);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success ? 'Subscribed successfully!' : 'Failed to parse RSS feed',
-                      ),
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return Consumer(
+          builder: (context, ref, child) {
+            final syncState = ref.watch(syncStatusNotifierProvider);
+            final isSubscribing = syncState.isSyncing;
+
+            return AlertDialog(
+              title: const Text('Subscribe to Podcast Feed'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    enabled: !isSubscribing,
+                    decoration: const InputDecoration(
+                      hintText: 'https://example.com/podcast.xml',
+                      labelText: 'RSS Feed URL',
                     ),
-                  );
-                }
-              }
-            },
-            child: const Text('Subscribe'),
-          ),
-        ],
-      ),
+                    autofocus: true,
+                  ),
+                  if (isSubscribing) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            syncState.currentTask ?? 'Downloading & parsing RSS feed...',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubscribing ? null : () => Navigator.pop(dialogCtx),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubscribing
+                      ? null
+                      : () async {
+                          final url = controller.text.trim();
+                          if (url.isNotEmpty) {
+                            final success = await ref
+                                .read(podcastsNotifierProvider.notifier)
+                                .addPodcastFeed(url);
+
+                            if (dialogCtx.mounted) {
+                              Navigator.pop(dialogCtx);
+                            }
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    success
+                                        ? 'Subscribed successfully!'
+                                        : 'Failed to parse RSS feed',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: isSubscribing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Subscribe'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -245,3 +332,4 @@ class _PodcastCard extends StatelessWidget {
     );
   }
 }
+

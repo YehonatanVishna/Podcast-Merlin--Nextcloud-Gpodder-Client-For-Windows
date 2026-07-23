@@ -69,6 +69,7 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   Widget build(BuildContext context) {
     final episodesState = ref.watch(episodesNotifierProvider(widget.podcast?.id));
     final audioHandler = ref.watch(audioHandlerProvider);
+    final syncStatus = ref.watch(syncStatusNotifierProvider);
 
     _checkAutoLoadMore(episodesState);
 
@@ -84,11 +85,23 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
         title: Text(widget.podcast?.title ?? 'All Episodes'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh Feed',
-            onPressed: () {
-              ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).refresh();
-            },
+            icon: syncStatus.isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: syncStatus.isSyncing
+                ? (syncStatus.currentTask ?? 'Refreshing...')
+                : 'Refresh Feed',
+            onPressed: syncStatus.isSyncing
+                ? null
+                : () {
+                    ref
+                        .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                        .refresh(podcast: widget.podcast);
+                  },
           ),
           PopupMenuButton<EpisodeFilter>(
             icon: const Icon(Icons.filter_list),
@@ -104,7 +117,36 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
           ),
         ],
       ),
-      body: _buildBody(context, episodesState, audioHandler),
+      body: Column(
+        children: [
+          if (syncStatus.isSyncing) ...[
+            const LinearProgressIndicator(minHeight: 3),
+            Container(
+              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      syncStatus.currentTask ?? 'Processing...',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          Expanded(child: _buildBody(context, episodesState, audioHandler)),
+        ],
+      ),
     );
   }
 
@@ -124,7 +166,9 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
-                ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).refresh();
+                ref
+                    .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                    .refresh(podcast: widget.podcast);
               },
               child: const Text('Retry'),
             ),
@@ -135,7 +179,9 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).refresh();
+        await ref
+            .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+            .refresh(podcast: widget.podcast);
       },
       child: CustomScrollView(
         controller: _scrollController,
