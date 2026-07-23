@@ -126,8 +126,9 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     final currentFilter = filter ?? state.filter;
     state = state.copyWith(isLoading: true, error: null, filter: currentFilter);
     try {
-      final list = _podcastId != null
-          ? await _db.getEpisodesForPodcast(_podcastId!, limit: pageSize, offset: 0, filter: currentFilter)
+      final podcastId = _podcastId;
+      final list = podcastId != null
+          ? await _db.getEpisodesForPodcast(podcastId, limit: pageSize, offset: 0, filter: currentFilter)
           : await _db.getAllEpisodes(limit: pageSize, offset: 0, filter: currentFilter);
 
       state = EpisodesState(
@@ -148,8 +149,9 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     state = state.copyWith(isLoadingMore: true);
     try {
       final offset = state.episodes.length;
-      final newEpisodes = _podcastId != null
-          ? await _db.getEpisodesForPodcast(_podcastId!, limit: pageSize, offset: offset, filter: state.filter)
+      final podcastId = _podcastId;
+      final newEpisodes = podcastId != null
+          ? await _db.getEpisodesForPodcast(podcastId, limit: pageSize, offset: offset, filter: state.filter)
           : await _db.getAllEpisodes(limit: pageSize, offset: offset, filter: state.filter);
 
       if (newEpisodes.isEmpty) {

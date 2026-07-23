@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:sanitize_html/sanitize_html.dart';
 import 'package:xml/xml.dart';
 import '../../core/models/episode.dart';
+import '../../core/utils/html_purifier.dart';
 
 class RssFeedResult {
   final String title;
@@ -150,12 +150,7 @@ class RssFeedParser {
   }
 
   String _sanitizeText(String rawText) {
-    if (rawText.isEmpty) return '';
-    try {
-      return sanitizeHtml(rawText);
-    } catch (_) {
-      return rawText.replaceAll(RegExp(r'<[^>]*>'), '');
-    }
+    return HtmlPurifier.purify(rawText);
   }
 
   DateTime? _parseDate(String? dateStr) {

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
+import '../widgets/purified_html_text.dart';
 
 class EpisodeListView extends ConsumerStatefulWidget {
   final Podcast? podcast;
@@ -341,11 +342,9 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             ),
             if (podcast.description.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text(
-                podcast.description,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
+              PurifiedHtmlText(
+                htmlData: podcast.description,
+                textStyle: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ],
@@ -395,9 +394,9 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              Text(
-                ep.description,
-                style: Theme.of(context).textTheme.bodyMedium,
+              PurifiedHtmlText(
+                htmlData: ep.description,
+                textStyle: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
           ),

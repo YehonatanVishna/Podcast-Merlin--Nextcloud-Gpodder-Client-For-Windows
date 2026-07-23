@@ -51,6 +51,8 @@ dependencies:
   just_audio_media_kit: ^2.1.0
   media_kit_libs_linux: ^1.2.1
   sqflite_common_ffi_web: ^1.1.2
+  flutter_widget_from_html: ^0.16.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
