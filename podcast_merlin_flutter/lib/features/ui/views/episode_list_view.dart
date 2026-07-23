@@ -8,8 +8,9 @@ import '../../../core/providers/app_providers.dart';
 
 class EpisodeListView extends ConsumerStatefulWidget {
   final Podcast? podcast;
+  final VoidCallback? onBackPressed;
 
-  const EpisodeListView({super.key, this.podcast});
+  const EpisodeListView({super.key, this.podcast, this.onBackPressed});
 
   @override
   ConsumerState<EpisodeListView> createState() => _EpisodeListViewState();
@@ -72,6 +73,13 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: widget.onBackPressed != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back',
+                onPressed: widget.onBackPressed,
+              )
+            : null,
         title: Text(widget.podcast?.title ?? 'All Episodes'),
         actions: [
           IconButton(

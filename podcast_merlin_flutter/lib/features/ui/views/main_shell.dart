@@ -5,16 +5,81 @@ import 'settings_view.dart';
 import '../widgets/player_dock.dart';
 import '../../../core/models/podcast.dart';
 
+class ShellNavigationState {
+  final int selectedIndex;
+  final Podcast? selectedPodcast;
+
+  const ShellNavigationState({
+    required this.selectedIndex,
+    this.selectedPodcast,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShellNavigationState &&
+          runtimeType == other.runtimeType &&
+          selectedIndex == other.selectedIndex &&
+          selectedPodcast?.id == other.selectedPodcast?.id;
+
+  @override
+  int get hashCode => selectedIndex.hashCode ^ (selectedPodcast?.id.hashCode ?? 0);
+}
+
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() => MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
-  Podcast? _selectedPodcast;
+class MainShellState extends State<MainShell> {
+  final List<ShellNavigationState> _history = [
+    const ShellNavigationState(selectedIndex: 0, selectedPodcast: null),
+  ];
+  int _historyIndex = 0;
+
+  int get selectedIndex => _history[_historyIndex].selectedIndex;
+  Podcast? get selectedPodcast => _history[_historyIndex].selectedPodcast;
+
+  void navigateTo(int index, {Podcast? podcast}) {
+    final newState = ShellNavigationState(
+      selectedIndex: index,
+      selectedPodcast: podcast,
+    );
+
+    if (newState == _history[_historyIndex]) {
+      return;
+    }
+
+    setState(() {
+      if (_historyIndex < _history.length - 1) {
+        _history.removeRange(_historyIndex + 1, _history.length);
+      }
+      _history.add(newState);
+      _historyIndex = _history.length - 1;
+    });
+  }
+
+  bool goBack() {
+    if (_historyIndex > 0) {
+      setState(() {
+        _historyIndex--;
+      });
+      return true;
+    }
+    return false;
+  }
+
+  bool goForward() {
+    if (_historyIndex < _history.length - 1) {
+      setState(() {
+        _historyIndex++;
+      });
+      return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,14 +90,12 @@ class _MainShellState extends State<MainShell> {
         final pages = [
           PodcastCatalogView(
             onPodcastSelected: (pod) {
-              setState(() {
-                _selectedPodcast = pod;
-                _selectedIndex = 1;
-              });
+              navigateTo(1, podcast: pod);
             },
           ),
           EpisodeListView(
-            podcast: _selectedPodcast,
+            podcast: selectedPodcast,
+            onBackPressed: _historyIndex > 0 ? () => goBack() : null,
           ),
           const SettingsView(),
         ];
@@ -53,12 +116,9 @@ class _MainShellState extends State<MainShell> {
                       errorBuilder: (context, error, stackTrace) => const Icon(Icons.podcasts, size: 40),
                     ),
                   ),
-                  selectedIndex: _selectedIndex,
+                  selectedIndex: selectedIndex,
                   onDestinationSelected: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                      if (index == 0) _selectedPodcast = null;
-                    });
+                    navigateTo(index, podcast: index == 0 ? null : (index == 1 ? selectedPodcast : null));
                   },
                   labelType: NavigationRailLabelType.selected,
                   destinations: const [
@@ -85,7 +145,7 @@ class _MainShellState extends State<MainShell> {
                   children: [
                     Expanded(
                       child: IndexedStack(
-                        index: _selectedIndex,
+                        index: selectedIndex,
                         children: pages,
                       ),
                     ),
@@ -97,12 +157,9 @@ class _MainShellState extends State<MainShell> {
           ),
           bottomNavigationBar: !isDesktop
               ? BottomNavigationBar(
-                  currentIndex: _selectedIndex,
+                  currentIndex: selectedIndex,
                   onTap: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                      if (index == 0) _selectedPodcast = null;
-                    });
+                    navigateTo(index, podcast: index == 0 ? null : (index == 1 ? selectedPodcast : null));
                   },
                   items: const [
                     BottomNavigationBarItem(
