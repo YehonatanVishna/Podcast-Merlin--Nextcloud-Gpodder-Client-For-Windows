@@ -137,12 +137,18 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE gpodder_actions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        podcastUrl TEXT NOT NULL,
-        episodeUrl TEXT NOT NULL,
+        podcast TEXT,
+        episode TEXT,
         action TEXT NOT NULL,
         position INTEGER,
-        totalDuration INTEGER,
-        timestamp TEXT NOT NULL
+        started INTEGER,
+        total INTEGER,
+        device TEXT,
+        status TEXT,
+        timestamp TEXT NOT NULL,
+        podcastUrl TEXT,
+        episodeUrl TEXT,
+        totalDuration INTEGER
       )
     ''');
   }
@@ -232,6 +238,20 @@ class DatabaseHelper {
     await batch.commit(noResult: true);
   }
 
+  Future<Podcast?> getPodcastById(int id) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final maps = await db.query(
+      'podcasts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isNotEmpty) {
+      return Podcast.fromMap(maps.first);
+    }
+    return null;
+  }
+
   Future<void> saveEpisodesBatch(List<Episode> episodes) async => insertEpisodes(episodes);
 
   Future<List<Episode>> getEpisodesForPodcast(
@@ -242,23 +262,26 @@ class DatabaseHelper {
   }) async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    String whereClause = '$_podcastIdCol = ?';
+    String whereClause = 'e.$_podcastIdCol = ?';
     List<dynamic> whereArgs = [podcastId];
 
     if (filter == EpisodeFilter.unplayed) {
-      whereClause += ' AND $_isPlayedCol = 0 AND (duration IS NULL OR duration = 0 OR position < (duration - 10))';
+      whereClause += ' AND e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position < (e.duration - 10))';
     } else if (filter == EpisodeFilter.finished) {
-      whereClause += ' AND ($_isPlayedCol = 1 OR (duration IS NOT NULL AND duration > 0 AND position >= (duration - 10)))';
+      whereClause += ' AND (e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position >= (e.duration - 10)))';
     }
 
-    final maps = await db.query(
-      'episodes',
-      where: whereClause,
-      whereArgs: whereArgs,
-      orderBy: '$_pubDateCol DESC',
-      limit: limit,
-      offset: offset,
-    );
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE $whereClause
+      ORDER BY e.$_pubDateCol DESC
+      ${limit != null ? 'LIMIT $limit' : ''}
+      ${offset != null ? 'OFFSET $offset' : ''}
+    ''';
+
+    final maps = await db.rawQuery(query, whereArgs);
     return maps.map((map) => Episode.fromMap(map)).toList();
   }
 
@@ -269,45 +292,53 @@ class DatabaseHelper {
   }) async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    String? whereClause;
-    List<dynamic>? whereArgs;
+    String whereClause = '1=1';
+    List<dynamic> whereArgs = [];
 
     if (filter == EpisodeFilter.unplayed) {
-      whereClause = '$_isPlayedCol = 0 AND (duration IS NULL OR duration = 0 OR position < (duration - 10))';
+      whereClause = 'e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position < (e.duration - 10))';
     } else if (filter == EpisodeFilter.finished) {
-      whereClause = '($_isPlayedCol = 1 OR (duration IS NOT NULL AND duration > 0 AND position >= (duration - 10)))';
+      whereClause = '(e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position >= (e.duration - 10)))';
     }
 
-    final maps = await db.query(
-      'episodes',
-      where: whereClause,
-      whereArgs: whereArgs,
-      orderBy: '$_pubDateCol DESC',
-      limit: limit,
-      offset: offset,
-    );
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE $whereClause
+      ORDER BY e.$_pubDateCol DESC
+      ${limit != null ? 'LIMIT $limit' : ''}
+      ${offset != null ? 'OFFSET $offset' : ''}
+    ''';
+
+    final maps = await db.rawQuery(query, whereArgs);
     return maps.map((map) => Episode.fromMap(map)).toList();
   }
 
   Future<List<Episode>> getAllUnplayedEpisodes() async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    final maps = await db.query(
-      'episodes',
-      where: '$_isPlayedCol = 0',
-      orderBy: '$_pubDateCol DESC',
-    );
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE e.$_isPlayedCol = 0
+      ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
     return maps.map((map) => Episode.fromMap(map)).toList();
   }
 
   Future<Episode?> getEpisodeByMediaUrl(String mediaUrl) async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    final maps = await db.query(
-      'episodes',
-      where: '$_mediaUrlCol = ?',
-      whereArgs: [mediaUrl],
-    );
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE e.$_mediaUrlCol = ?
+    ''';
+    final maps = await db.rawQuery(query, [mediaUrl]);
     if (maps.isNotEmpty) {
       return Episode.fromMap(maps.first);
     }
@@ -335,7 +366,28 @@ class DatabaseHelper {
 
   Future<int> queueGPodderAction(GPodderAction action) async {
     final db = await instance.database;
-    return db.insert('gpodder_actions', action.toMap());
+    final info = await db.rawQuery('PRAGMA table_info(gpodder_actions)');
+    final cols = info.map((row) => row['name'].toString()).toSet();
+
+    final map = action.toMap();
+    final adapted = <String, dynamic>{};
+    for (final entry in map.entries) {
+      if (cols.contains(entry.key)) {
+        adapted[entry.key] = entry.value;
+      }
+    }
+
+    if (cols.contains('podcastUrl')) {
+      adapted['podcastUrl'] = action.podcast;
+    }
+    if (cols.contains('episodeUrl')) {
+      adapted['episodeUrl'] = action.episode;
+    }
+    if (cols.contains('totalDuration')) {
+      adapted['totalDuration'] = action.total;
+    }
+
+    return db.insert('gpodder_actions', adapted);
   }
 
   Future<int> enqueueAction(GPodderAction action) async => queueGPodderAction(action);

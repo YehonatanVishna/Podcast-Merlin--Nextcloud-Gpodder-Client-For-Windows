@@ -1,8 +1,11 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/database/ffi_init.dart';
+import 'core/providers/app_providers.dart';
+import 'features/player/audio_player_service.dart';
 import 'features/ui/views/main_shell.dart';
 
 class GoBackIntent extends Intent {
@@ -19,9 +22,24 @@ void main() async {
   // Platform-safe FFI setup (noop on Web, sqflite_ffi on Desktop/Mobile)
   setupFfi();
 
+  // Initialize audio_service so the handler is registered with the platform's
+  // media session (Android notification shade, lock-screen controls, etc.)
+  final audioHandler = await AudioService.init(
+    builder: () => MerlinAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.podcastmerlin.audio',
+      androidNotificationChannelName: 'Podcast Merlin Playback',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
+    ),
+  );
+
   runApp(
-    const ProviderScope(
-      child: PodcastMerlinApp(),
+    ProviderScope(
+      overrides: [
+        audioHandlerProvider.overrideWithValue(audioHandler),
+      ],
+      child: const PodcastMerlinApp(),
     ),
   );
 }

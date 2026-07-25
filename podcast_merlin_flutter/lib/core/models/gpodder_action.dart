@@ -59,7 +59,7 @@ class GPodderAction {
       'podcast': podcast,
       'episode': episode,
       'action': action,
-      'timestamp': (timestamp.millisecondsSinceEpoch ~/ 1000),
+      'timestamp': timestamp.toUtc().toIso8601String().split('.').first,
       if (action == 'play') 'position': position,
       if (action == 'play') 'started': started,
       if (action == 'play') 'total': total,
@@ -98,15 +98,19 @@ class GPodderAction {
       parsedTime = DateTime.now();
     }
 
+    final podcastVal = map['podcast'] ?? map['podcastUrl'] ?? map['podcast_url'] ?? '';
+    final episodeVal = map['episode'] ?? map['episodeUrl'] ?? map['episode_url'] ?? '';
+    final totalVal = map['total'] ?? map['totalDuration'] ?? map['total_duration'] ?? 0;
+
     return GPodderAction(
       id: map['id'] as int?,
-      podcast: map['podcast'] as String? ?? '',
-      episode: map['episode'] as String? ?? '',
+      podcast: podcastVal.toString(),
+      episode: episodeVal.toString(),
       action: map['action'] as String? ?? 'play',
       timestamp: parsedTime,
       position: (map['position'] as num?)?.toInt() ?? 0,
       started: (map['started'] as num?)?.toInt() ?? 0,
-      total: (map['total'] as num?)?.toInt() ?? 0,
+      total: (totalVal as num?)?.toInt() ?? 0,
       device: map['device'] as String? ?? 'podcast_merlin_flutter',
       status: map['status'] as String? ?? 'pending',
     );

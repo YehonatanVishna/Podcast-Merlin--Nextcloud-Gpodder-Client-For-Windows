@@ -103,9 +103,12 @@ final syncStatusNotifierProvider =
 });
 
 final audioHandlerProvider = Provider<MerlinAudioHandler>((ref) {
-  final handler = MerlinAudioHandler();
-  ref.onDispose(() => handler.dispose());
-  return handler;
+  // This provider is overridden in main.dart with the handler returned by
+  // AudioService.init(). If you see this error, make sure the ProviderScope
+  // in main() includes the audioHandlerProvider override.
+  throw UnimplementedError(
+    'audioHandlerProvider must be overridden with AudioService.init() result',
+  );
 });
 
 class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {

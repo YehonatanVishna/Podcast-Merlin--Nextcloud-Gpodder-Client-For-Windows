@@ -5,10 +5,12 @@ import 'package:just_audio/just_audio.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/gpodder_action.dart';
+import '../sync/sync_service.dart';
 
 class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
   final DatabaseHelper _db = DatabaseHelper.instance;
+  final SyncService _syncService = SyncService();
 
   Episode? _currentEpisode;
   Timer? _positionSyncTimer;
@@ -73,23 +75,31 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> playEpisode(Episode episode) async {
-    _currentEpisode = episode;
+    Episode epToPlay = episode;
+    if (epToPlay.podcastRss.isEmpty && epToPlay.podcastId != null && epToPlay.podcastId! > 0) {
+      final pod = await _db.getPodcastById(epToPlay.podcastId!);
+      if (pod != null) {
+        epToPlay = epToPlay.copyWith(podcastRss: pod.rssUrl);
+      }
+    }
+
+    _currentEpisode = epToPlay;
     _lastSyncedPosition = -1; // Reset stale position marker
 
     mediaItem.add(
       MediaItem(
-        id: episode.mediaUrl,
-        album: episode.podcastRss,
-        title: episode.title,
-        artUri: episode.imageUrl.isNotEmpty ? Uri.tryParse(episode.imageUrl) : null,
-        duration: Duration(seconds: episode.duration),
+        id: epToPlay.mediaUrl,
+        album: epToPlay.podcastRss,
+        title: epToPlay.title,
+        artUri: epToPlay.imageUrl.isNotEmpty ? Uri.tryParse(epToPlay.imageUrl) : null,
+        duration: Duration(seconds: epToPlay.duration),
       ),
     );
 
     try {
-      await _player.setUrl(episode.mediaUrl);
-      if (episode.position > 0 && episode.position < (episode.duration - 5)) {
-        await _player.seek(Duration(seconds: episode.position));
+      await _player.setUrl(epToPlay.mediaUrl);
+      if (epToPlay.position > 0 && epToPlay.position < (epToPlay.duration - 5)) {
+        await _player.seek(Duration(seconds: epToPlay.position));
       }
       await play();
       _startPeriodicPositionSync();
@@ -169,6 +179,15 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _enqueueCurrentPositionAction() async {
     if (_currentEpisode == null) return;
+    var podcastRss = _currentEpisode!.podcastRss;
+    if (podcastRss.isEmpty && _currentEpisode!.podcastId != null && _currentEpisode!.podcastId! > 0) {
+      final pod = await _db.getPodcastById(_currentEpisode!.podcastId!);
+      if (pod != null) {
+        podcastRss = pod.rssUrl;
+        _currentEpisode = _currentEpisode!.copyWith(podcastRss: podcastRss);
+      }
+    }
+
     final currentSec = _player.position.inSeconds;
     final totalSec = (_player.duration?.inSeconds ?? _currentEpisode!.duration);
 
@@ -178,33 +197,49 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     final isPlayed = (totalSec > 0 && currentSec >= (totalSec - 10));
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, currentSec, isPlayed: isPlayed);
 
-    final action = GPodderAction(
-      podcast: _currentEpisode!.podcastRss,
-      episode: _currentEpisode!.mediaUrl,
-      action: 'play',
-      timestamp: DateTime.now(),
-      position: currentSec,
-      started: 0,
-      total: totalSec,
-    );
-    await _db.enqueueAction(action);
+    if (podcastRss.isNotEmpty) {
+      final action = GPodderAction(
+        podcast: podcastRss,
+        episode: _currentEpisode!.mediaUrl,
+        action: 'play',
+        timestamp: DateTime.now(),
+        position: currentSec,
+        started: 0,
+        total: totalSec,
+      );
+      await _db.enqueueAction(action);
+
+      // Trigger automatic background push to gPodder server
+      _syncService.pushPendingActions().catchError((_) => false);
+    }
   }
 
   Future<void> _onPlaybackCompleted() async {
     if (_currentEpisode == null) return;
+    var podcastRss = _currentEpisode!.podcastRss;
+    if (podcastRss.isEmpty && _currentEpisode!.podcastId != null && _currentEpisode!.podcastId! > 0) {
+      final pod = await _db.getPodcastById(_currentEpisode!.podcastId!);
+      if (pod != null) {
+        podcastRss = pod.rssUrl;
+      }
+    }
+
     final totalSec = (_player.duration?.inSeconds ?? _currentEpisode!.duration);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, totalSec, isPlayed: true);
 
-    final action = GPodderAction(
-      podcast: _currentEpisode!.podcastRss,
-      episode: _currentEpisode!.mediaUrl,
-      action: 'play',
-      timestamp: DateTime.now(),
-      position: totalSec,
-      started: 0,
-      total: totalSec,
-    );
-    await _db.enqueueAction(action);
+    if (podcastRss.isNotEmpty) {
+      final action = GPodderAction(
+        podcast: podcastRss,
+        episode: _currentEpisode!.mediaUrl,
+        action: 'play',
+        timestamp: DateTime.now(),
+        position: totalSec,
+        started: 0,
+        total: totalSec,
+      );
+      await _db.enqueueAction(action);
+      _syncService.pushPendingActions().catchError((_) => false);
+    }
     _stopPeriodicPositionSync();
   }
 

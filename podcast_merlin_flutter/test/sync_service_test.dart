@@ -1,0 +1,209 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:podcast_merlin_flutter/core/database/database_helper.dart';
+import 'package:podcast_merlin_flutter/core/models/podcast.dart';
+import 'package:podcast_merlin_flutter/core/models/episode.dart';
+import 'package:podcast_merlin_flutter/core/models/gpodder_action.dart';
+import 'package:podcast_merlin_flutter/core/models/sync_status.dart';
+import 'package:podcast_merlin_flutter/features/sync/gpodder_api_client.dart';
+import 'package:podcast_merlin_flutter/features/sync/secure_storage_service.dart';
+import 'package:podcast_merlin_flutter/features/sync/sync_service.dart';
+
+class TestGPodderApiClient extends GPodderApiClient {
+  bool shouldSucceed = true;
+  Map<String, dynamic>? mockSubscriptionResponse;
+  List<GPodderAction> mockEpisodeActions = [];
+
+  @override
+  Future<bool> uploadEpisodeActions({
+    required String serverUrl,
+    required String username,
+    required String password,
+    required List<GPodderAction> actions,
+  }) async {
+    return shouldSucceed;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchSubscriptions({
+    required String serverUrl,
+    required String username,
+    required String password,
+    int sinceTimestamp = 0,
+  }) async {
+    if (!shouldSucceed) return null;
+    return mockSubscriptionResponse;
+  }
+
+  @override
+  Future<List<GPodderAction>> fetchEpisodeActions({
+    required String serverUrl,
+    required String username,
+    required String password,
+    int sinceTimestamp = 0,
+  }) async {
+    if (!shouldSucceed) return [];
+    return mockEpisodeActions;
+  }
+}
+
+class TestSecureStorageService extends SecureStorageService {
+  final Map<String, String> _data = {};
+
+  TestSecureStorageService({
+    String? serverUrl,
+    String? username,
+    String? password,
+  }) {
+    if (serverUrl != null) _data[SecureStorageService.keyServerUrl] = serverUrl;
+    if (username != null) _data[SecureStorageService.keyUsername] = username;
+    if (password != null) _data[SecureStorageService.keyPassword] = password;
+  }
+
+  @override
+  Future<String?> read(String key) async => _data[key];
+
+  @override
+  Future<void> write(String key, String value) async {
+    _data[key] = value;
+  }
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
+  group('SyncService Integration Tests', () {
+    late DatabaseHelper db;
+
+    setUp(() async {
+      db = DatabaseHelper.instance;
+      final database = await db.database;
+      await database.delete('gpodder_actions');
+      await database.delete('episodes');
+      await database.delete('podcasts');
+    });
+
+    test('performFullSync returns false when credentials missing', () async {
+      final emptyStorage = TestSecureStorageService();
+      final syncService = SyncService(
+        apiClient: TestGPodderApiClient(),
+        storage: emptyStorage,
+        db: db,
+      );
+
+      final result = await syncService.performFullSync();
+      expect(result, isFalse);
+    });
+
+    test('performFullSync processes remote subscription changes and episode actions', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient();
+
+      // Pre-seed a podcast to be deleted via remote sync
+      final podcast = Podcast(
+        rssUrl: 'https://example.com/remove.xml',
+        title: 'To Be Removed',
+        description: '',
+        imageUrl: '',
+        link: '',
+        lastUpdated: DateTime.now(),
+      );
+      final podId = await db.insertOrUpdatePodcast(podcast);
+
+      final episode = Episode(
+        podcastId: podId,
+        podcastRss: 'https://example.com/remove.xml',
+        guid: 'ep-sync-1',
+        title: 'Ep 1',
+        description: '',
+        mediaUrl: 'https://example.com/ep1.mp3',
+        publishedAt: DateTime.now(),
+        duration: 1000,
+        position: 0,
+        isPlayed: false,
+        imageUrl: '',
+      );
+      await db.insertEpisodes([episode]);
+
+      apiClient.mockSubscriptionResponse = {
+        'add': <String>[],
+        'remove': ['https://example.com/remove.xml'],
+        'timestamp': 1700000000,
+      };
+
+      apiClient.mockEpisodeActions = [
+        GPodderAction(
+          podcast: 'https://example.com/remove.xml',
+          episode: 'https://example.com/ep1.mp3',
+          action: 'play',
+          timestamp: DateTime.now(),
+          position: 995,
+          started: 0,
+          total: 1000,
+        ),
+      ];
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+        db: db,
+      );
+
+      final stages = <SyncStage>[];
+      final success = await syncService.performFullSync(
+        onProgress: (stage, detail) => stages.add(stage),
+      );
+
+      expect(success, isTrue);
+      expect(stages, contains(SyncStage.pushingActions));
+      expect(stages, contains(SyncStage.fetchingSubscriptions));
+      expect(stages, contains(SyncStage.fetchingEpisodeActions));
+
+      // Podcast should be deleted
+      final podAfter = await db.getPodcastByRssUrl('https://example.com/remove.xml');
+      expect(podAfter, isNull);
+
+      // Saved timestamp updated
+      final lastTs = await storage.read(SecureStorageService.keyLastActionTimestamp);
+      expect(lastTs, '1700000000');
+    });
+
+    test('pushPendingActions retains pending actions when upload fails', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient()..shouldSucceed = false;
+
+      final action = GPodderAction(
+        podcast: 'https://example.com/pod.xml',
+        episode: 'https://example.com/ep1.mp3',
+        action: 'play',
+        timestamp: DateTime.now(),
+        position: 150,
+        started: 0,
+        total: 1200,
+      );
+      await db.enqueueAction(action);
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+        db: db,
+      );
+
+      final result = await syncService.pushPendingActions();
+      expect(result, isFalse);
+
+      final pendingAfter = await db.getPendingActions();
+      expect(pendingAfter.length, 1);
+    });
+  });
+}

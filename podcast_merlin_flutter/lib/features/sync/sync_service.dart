@@ -108,6 +108,19 @@ class SyncService {
     }
   }
 
+  /// Push any pending actions to gPodder server asynchronously
+  Future<bool> pushPendingActions() async {
+    final serverUrl = await _storage.read(SecureStorageService.keyServerUrl);
+    final username = await _storage.read(SecureStorageService.keyUsername);
+    final password = await _storage.read(SecureStorageService.keyPassword);
+
+    if (serverUrl == null || username == null || password == null) {
+      return false;
+    }
+
+    return _pushPendingActions(serverUrl, username, password);
+  }
+
   /// Pushes enqueued offline actions to server after collapsing duplicates
   Future<bool> _pushPendingActions(String serverUrl, String username, String password) async {
     final pending = await _db.getPendingActions();
