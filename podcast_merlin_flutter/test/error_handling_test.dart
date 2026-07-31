@@ -169,5 +169,54 @@ void main() {
       notifier.clearError();
       expect(notifier.state.error, isNull);
     });
+
+    test('SyncStatusNotifier surfaces root error when fetchSubscriptions returns null', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient()..shouldSucceed = false;
+      apiClient.lastError = 'HTTP 401 Unauthorized';
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+      );
+      final notifier = SyncStatusNotifier(syncService);
+
+      final success = await notifier.performFullSync();
+      expect(success, isFalse);
+      expect(notifier.state.error, contains('Failed to fetch subscriptions: HTTP 401 Unauthorized'));
+    });
+
+    test('SyncStatusNotifier surfaces feed parsing root error when new feed download fails', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient();
+      apiClient.mockSubscriptionResponse = {
+        'add': ['https://invalid-domain-does-not-exist.test/rss.xml'],
+        'remove': <String>[],
+        'timestamp': 1720000000,
+      };
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+      );
+      final notifier = SyncStatusNotifier(syncService);
+
+      final success = await notifier.performFullSync();
+      expect(success, isFalse);
+      expect(notifier.state.error, contains('Sync completed with feed errors:'));
+      expect(notifier.state.error, contains('https://invalid-domain-does-not-exist.test/rss.xml'));
+
+      // Verify last action timestamp was NOT saved due to feed error
+      final savedTs = await storage.read('gpodder_last_action_timestamp');
+      expect(savedTs, isNull);
+    });
   });
 }

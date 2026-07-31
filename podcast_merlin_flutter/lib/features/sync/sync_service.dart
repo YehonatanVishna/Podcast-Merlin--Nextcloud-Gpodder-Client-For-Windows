@@ -65,8 +65,8 @@ class SyncService {
         sinceTimestamp: fetchSinceTs,
       );
 
-      if (subResponse == null && _apiClient.lastError != null) {
-        lastError = 'Failed to fetch subscriptions: ${_apiClient.lastError}';
+      if (subResponse == null) {
+        lastError = 'Failed to fetch subscriptions: ${_apiClient.lastError ?? "Unable to retrieve subscriptions from server"}';
         return false;
       }
 
