@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../sync/secure_storage_service.dart';
@@ -92,14 +93,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: Image.asset(
-                      'assets/images/logo.png',
+                    child: SvgPicture.asset(
+                      'assets/images/logo.svg',
                       width: 80,
                       height: 80,
-                      cacheWidth: 160,
-                      cacheHeight: 160,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.podcasts, size: 64),
                     ),
                   ),
                   const SizedBox(height: 12),

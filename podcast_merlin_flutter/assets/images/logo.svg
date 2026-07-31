@@ -179,9 +179,6 @@
     </g>
   </defs>
 
-  <!-- 0. PURE BLACK OUTER BACKGROUND -->
-  <rect width="1024" height="1024" fill="#000000"/>
-
   <!-- 1. SQUIRCLE APP ICON CONTAINER -->
   <rect x="128" y="124" width="768" height="772" rx="170" ry="170" fill="url(#squircle-bg-grad)"/>
   <rect x="128" y="124" width="768" height="772" rx="170" ry="170" fill="none" stroke="url(#squircle-rim)" stroke-width="2.5"/>

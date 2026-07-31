@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
@@ -17,13 +18,10 @@ class PodcastCatalogView extends ConsumerWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            Image.asset(
-              'assets/images/logo.png',
+            SvgPicture.asset(
+              'assets/images/logo.svg',
               width: 32,
               height: 32,
-              cacheWidth: 64,
-              cacheHeight: 64,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.podcasts, size: 32),
             ),
             const SizedBox(width: 12),
             const Text('Podcast Merlin'),
@@ -283,13 +281,13 @@ class _PodcastCard extends StatelessWidget {
                       ? Image.network(
                           podcast.imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Image.asset(
-                            'assets/images/logo_square.png',
+                          errorBuilder: (context, error, stackTrace) => SvgPicture.asset(
+                            'assets/images/logo.svg',
                             fit: BoxFit.cover,
                           ),
                         )
-                      : Image.asset(
-                          'assets/images/logo_square.png',
+                      : SvgPicture.asset(
+                          'assets/images/logo.svg',
                           fit: BoxFit.cover,
                         ),
                   Positioned(

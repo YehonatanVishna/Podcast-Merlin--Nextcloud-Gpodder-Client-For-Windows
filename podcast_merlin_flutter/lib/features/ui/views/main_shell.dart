@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'podcast_catalog_view.dart';
 import 'episode_list_view.dart';
 import 'settings_view.dart';
@@ -107,13 +108,10 @@ class MainShellState extends State<MainShell> {
                 NavigationRail(
                   leading: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Image.asset(
-                      'assets/images/logo.png',
+                    child: SvgPicture.asset(
+                      'assets/images/logo.svg',
                       width: 40,
                       height: 40,
-                      cacheWidth: 80,
-                      cacheHeight: 80,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.podcasts, size: 40),
                     ),
                   ),
                   selectedIndex: selectedIndex,
