@@ -126,9 +126,13 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
     }
     try {
       final list = await _db.getAllPodcasts();
-      state = AsyncValue.data(list);
+      if (mounted) {
+        state = AsyncValue.data(list);
+      }
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (mounted) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
@@ -218,15 +222,19 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
           ? await _db.getEpisodesForPodcast(podcastId, limit: pageSize, offset: 0, filter: currentFilter)
           : await _db.getAllEpisodes(limit: pageSize, offset: 0, filter: currentFilter);
 
-      state = EpisodesState(
-        episodes: list,
-        isLoading: false,
-        isLoadingMore: false,
-        hasMore: list.length >= pageSize,
-        filter: currentFilter,
-      );
+      if (mounted) {
+        state = EpisodesState(
+          episodes: list,
+          isLoading: false,
+          isLoadingMore: false,
+          hasMore: list.length >= pageSize,
+          filter: currentFilter,
+        );
+      }
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      if (mounted) {
+        state = state.copyWith(isLoading: false, error: e.toString());
+      }
     }
   }
 
@@ -241,6 +249,8 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
           ? await _db.getEpisodesForPodcast(podcastId, limit: pageSize, offset: offset, filter: state.filter)
           : await _db.getAllEpisodes(limit: pageSize, offset: offset, filter: state.filter);
 
+      if (!mounted) return;
+
       if (newEpisodes.isEmpty) {
         state = state.copyWith(isLoadingMore: false, hasMore: false);
       } else {
@@ -251,7 +261,9 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
         );
       }
     } catch (e) {
-      state = state.copyWith(isLoadingMore: false);
+      if (mounted) {
+        state = state.copyWith(isLoadingMore: false);
+      }
     }
   }
 
