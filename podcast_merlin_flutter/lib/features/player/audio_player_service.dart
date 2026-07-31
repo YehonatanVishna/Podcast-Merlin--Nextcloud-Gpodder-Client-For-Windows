@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/gpodder_action.dart';
 import '../sync/sync_service.dart';
+import 'linux_mpris_service.dart';
 
 class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
@@ -20,42 +22,83 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   StreamSubscription<PlayerState>? _playerStateSub;
 
   MerlinAudioHandler() {
+    _initAudioSession();
     _initPlayerListeners();
+    LinuxMprisService.instance.init(this);
   }
 
   Episode? get currentEpisode => _currentEpisode;
+
+  Future<void> _initAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.speech());
+
+      session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _player.setVolume(0.5);
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              pause();
+              break;
+          }
+        } else {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _player.setVolume(1.0);
+              break;
+            case AudioInterruptionType.pause:
+              play();
+              break;
+            case AudioInterruptionType.unknown:
+              break;
+          }
+        }
+      });
+
+      session.becomingNoisyEventStream.listen((_) {
+        pause();
+      });
+    } catch (e) {
+      if (kDebugMode) print('AudioSession initialization error: $e');
+    }
+  }
 
   void _initPlayerListeners() {
     _playbackEventSub = _player.playbackEventStream.listen(
       (event) {
         final playing = _player.playing;
-        playbackState.add(
-          playbackState.value.copyWith(
-            controls: [
-              MediaControl.rewind,
-              if (playing) MediaControl.pause else MediaControl.play,
-              MediaControl.fastForward,
-              MediaControl.stop,
-            ],
-            systemActions: const {
-              MediaAction.seek,
-              MediaAction.seekForward,
-              MediaAction.seekBackward,
-            },
-            androidCompactActionIndices: const [1],
-            processingState: const {
-              ProcessingState.idle: AudioProcessingState.idle,
-              ProcessingState.loading: AudioProcessingState.loading,
-              ProcessingState.buffering: AudioProcessingState.buffering,
-              ProcessingState.ready: AudioProcessingState.ready,
-              ProcessingState.completed: AudioProcessingState.completed,
-            }[_player.processingState]!,
-            playing: playing,
-            updatePosition: _player.position,
-            bufferedPosition: _player.bufferedPosition,
-            speed: _player.speed,
-          ),
+        final newState = playbackState.value.copyWith(
+          controls: [
+            MediaControl.rewind,
+            if (playing) MediaControl.pause else MediaControl.play,
+            MediaControl.fastForward,
+            MediaControl.stop,
+          ],
+          systemActions: const {
+            MediaAction.seek,
+            MediaAction.seekForward,
+            MediaAction.seekBackward,
+            MediaAction.setSpeed,
+          },
+          androidCompactActionIndices: const [0, 1, 2],
+          processingState: const {
+            ProcessingState.idle: AudioProcessingState.idle,
+            ProcessingState.loading: AudioProcessingState.loading,
+            ProcessingState.buffering: AudioProcessingState.buffering,
+            ProcessingState.ready: AudioProcessingState.ready,
+            ProcessingState.completed: AudioProcessingState.completed,
+          }[_player.processingState]!,
+          playing: playing,
+          updatePosition: _player.position,
+          bufferedPosition: _player.bufferedPosition,
+          speed: _player.speed,
         );
+        playbackState.add(newState);
+        LinuxMprisService.instance.updateState(newState, mediaItem.value);
       },
       onError: (Object e, StackTrace st) {
         if (kDebugMode) print('PlaybackEventStream error: $e');
@@ -74,6 +117,16 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  @override
+  Future<void> rewind() async {
+    await seekRelative(-15);
+  }
+
+  @override
+  Future<void> fastForward() async {
+    await seekRelative(30);
+  }
+
   Future<void> playEpisode(Episode episode) async {
     Episode epToPlay = episode;
     if (epToPlay.podcastRss.isEmpty && epToPlay.podcastId != null && epToPlay.podcastId! > 0) {
@@ -86,15 +139,15 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     _currentEpisode = epToPlay;
     _lastSyncedPosition = -1; // Reset stale position marker
 
-    mediaItem.add(
-      MediaItem(
-        id: epToPlay.mediaUrl,
-        album: epToPlay.podcastRss,
-        title: epToPlay.title,
-        artUri: epToPlay.imageUrl.isNotEmpty ? Uri.tryParse(epToPlay.imageUrl) : null,
-        duration: Duration(seconds: epToPlay.duration),
-      ),
+    final newItem = MediaItem(
+      id: epToPlay.mediaUrl,
+      album: epToPlay.podcastRss,
+      title: epToPlay.title,
+      artUri: epToPlay.imageUrl.isNotEmpty ? Uri.tryParse(epToPlay.imageUrl) : null,
+      duration: Duration(seconds: epToPlay.duration),
     );
+    mediaItem.add(newItem);
+    LinuxMprisService.instance.updateState(playbackState.value, newItem);
 
     try {
       await _player.setUrl(epToPlay.mediaUrl);

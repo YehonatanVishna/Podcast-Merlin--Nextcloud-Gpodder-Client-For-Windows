@@ -54,6 +54,10 @@ dependencies:
   sqflite_common_ffi_web: ^1.1.2
   flutter_widget_from_html: ^0.16.1
   url_launcher: ^6.3.2
+  permission_handler: ^11.3.1
+  audio_session: ^0.1.25
+  mpris: ^1.1.0
+  dbus: ^0.7.14
 
 dev_dependencies:
   flutter_test:

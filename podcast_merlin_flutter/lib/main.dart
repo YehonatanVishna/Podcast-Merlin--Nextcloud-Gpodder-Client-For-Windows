@@ -1,8 +1,10 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'core/database/ffi_init.dart';
 import 'core/providers/app_providers.dart';
 import 'features/player/audio_player_service.dart';
@@ -19,6 +21,13 @@ class GoForwardIntent extends Intent {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Request notification permission on Android 13+ for native notification shade controls
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      await Permission.notification.request();
+    } catch (_) {}
+  }
+
   // Platform-safe FFI setup (noop on Web, sqflite_ffi on Desktop/Mobile)
   setupFfi();
 
@@ -26,11 +35,13 @@ void main() async {
   // media session (Android notification shade, lock-screen controls, etc.)
   final audioHandler = await AudioService.init(
     builder: () => MerlinAudioHandler(),
-    config: const AudioServiceConfig(
+    config: AudioServiceConfig(
       androidNotificationChannelId: 'com.podcastmerlin.audio',
       androidNotificationChannelName: 'Podcast Merlin Playback',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      androidNotificationOngoing: false,
+      androidStopForegroundOnPause: false,
+      androidNotificationClickStartsActivity: true,
+      androidNotificationIcon: 'mipmap/ic_launcher',
     ),
   );
 
