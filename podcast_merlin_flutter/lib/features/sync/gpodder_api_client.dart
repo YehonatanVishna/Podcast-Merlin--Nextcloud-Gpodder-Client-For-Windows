@@ -2,9 +2,21 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../core/models/gpodder_action.dart';
+import '../../core/utils/error_formatter.dart';
+
+class GPodderApiException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  GPodderApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => message;
+}
 
 class GPodderApiClient {
   final Dio _dio;
+  String? lastError;
 
   GPodderApiClient({Dio? dio})
       : _dio = dio ??
@@ -28,7 +40,8 @@ class GPodderApiClient {
     if (url.endsWith('/')) {
       url = url.substring(0, url.length - 1);
     }
-    if (!url.contains('/index.php/apps/gpodder')) {
+    final lower = url.toLowerCase();
+    if (!lower.contains('/apps/gpoddersync') && !lower.contains('/apps/gpodder')) {
       url = '$url/index.php/apps/gpoddersync';
     }
     return url;
@@ -44,23 +57,73 @@ class GPodderApiClient {
     );
   }
 
-  /// Check connectivity & credentials against Nextcloud gPodder server
-  Future<bool> checkConnection({
+  List<String> _extractUrls(dynamic raw) {
+    final urls = <String>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is String) {
+          final trimmed = item.trim();
+          if (trimmed.isNotEmpty) urls.add(trimmed);
+        } else if (item is Map) {
+          final url = (item['url'] ?? item['rss_url'] ?? item['rssUrl'] ?? item['feed'] ?? item['link'] ?? '').toString().trim();
+          if (url.isNotEmpty) urls.add(url);
+        }
+      }
+    } else if (raw is String && raw.trim().isNotEmpty) {
+      urls.add(raw.trim());
+    } else if (raw is Map) {
+      final url = (raw['url'] ?? raw['rss_url'] ?? raw['rssUrl'] ?? raw['feed'] ?? raw['link'] ?? '').toString().trim();
+      if (url.isNotEmpty) urls.add(url);
+    }
+    return urls;
+  }
+
+  /// Check connectivity & credentials against Nextcloud gPodder server, returning detailed error or null if success
+  Future<String?> testConnectionDetailed({
     required String serverUrl,
     required String username,
     required String password,
   }) async {
+    if (serverUrl.trim().isEmpty) {
+      return 'Server URL cannot be empty.';
+    }
+    if (username.trim().isEmpty || password.trim().isEmpty) {
+      return 'Username and password cannot be empty.';
+    }
+
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final response = await _dio.get(
         '$baseUrl/subscriptions?since=2147483647',
         options: _getAuthOptions(username, password),
       );
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        lastError = null;
+        return null; // Connection success
+      }
+      final err = 'Server returned HTTP status code ${response.statusCode}';
+      lastError = err;
+      return err;
     } catch (e) {
-      if (kDebugMode) print('checkConnection error: $e');
-      return false;
+      if (kDebugMode) print('testConnectionDetailed error: $e');
+      final err = AppErrorFormatter.format(e);
+      lastError = err;
+      return err;
     }
+  }
+
+  /// Check connectivity & credentials against Nextcloud gPodder server
+  Future<bool> checkConnection({
+    required String serverUrl,
+    required String username,
+    required String password,
+  }) async {
+    final error = await testConnectionDetailed(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+    );
+    return error == null;
   }
 
   /// Get subscriptions diff from server
@@ -86,30 +149,21 @@ class GPodderApiClient {
         }
 
         if (decoded is List) {
-          final addList = decoded.map((e) => e.toString()).toList();
+          lastError = null;
+          final addList = _extractUrls(decoded);
           return {
             'add': addList,
             'remove': <String>[],
             'timestamp': sinceTimestamp,
           };
         } else if (decoded is Map) {
+          lastError = null;
           final map = Map<String, dynamic>.from(decoded);
-          final addRaw = map['add'];
+          final addRaw = map['add'] ?? map['subscriptions'] ?? map['urls'] ?? map['feeds'];
           final removeRaw = map['remove'];
 
-          List<String> addList = [];
-          if (addRaw is List) {
-            addList = addRaw.map((e) => e.toString()).toList();
-          } else if (addRaw is String && addRaw.isNotEmpty) {
-            addList = [addRaw];
-          }
-
-          List<String> removeList = [];
-          if (removeRaw is List) {
-            removeList = removeRaw.map((e) => e.toString()).toList();
-          } else if (removeRaw is String && removeRaw.isNotEmpty) {
-            removeList = [removeRaw];
-          }
+          final addList = _extractUrls(addRaw);
+          final removeList = _extractUrls(removeRaw);
 
           int parsedTs = sinceTimestamp;
           final tsRaw = map['timestamp'];
@@ -126,10 +180,13 @@ class GPodderApiClient {
           };
         }
       }
+      lastError = 'Server returned HTTP status ${response.statusCode}';
+      return null;
     } catch (e) {
       if (kDebugMode) print('fetchSubscriptions error: $e');
+      lastError = AppErrorFormatter.format(e);
+      return null;
     }
-    return null;
   }
 
   /// Upload subscription add/remove actions to server
@@ -151,9 +208,15 @@ class GPodderApiClient {
         data: payload,
         options: _getAuthOptions(username, password),
       );
-      return response.statusCode == 200 || response.statusCode == 201;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        lastError = null;
+        return true;
+      }
+      lastError = 'Failed to upload subscriptions (HTTP ${response.statusCode})';
+      return false;
     } catch (e) {
       if (kDebugMode) print('uploadSubscriptionChanges error: $e');
+      lastError = AppErrorFormatter.format(e);
       return false;
     }
   }
@@ -187,14 +250,18 @@ class GPodderApiClient {
           rawActions = decoded;
         }
 
+        lastError = null;
         return rawActions
             .map((item) => GPodderAction.fromMap(Map<String, dynamic>.from(item as Map)))
             .toList();
       }
+      lastError = 'Failed to fetch episode actions (HTTP ${response.statusCode})';
+      return [];
     } catch (e) {
       if (kDebugMode) print('fetchEpisodeActions error: $e');
+      lastError = AppErrorFormatter.format(e);
+      return [];
     }
-    return [];
   }
 
   /// Post queued episode actions to server
@@ -213,9 +280,15 @@ class GPodderApiClient {
         data: payload,
         options: _getAuthOptions(username, password),
       );
-      return response.statusCode == 200 || response.statusCode == 201;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        lastError = null;
+        return true;
+      }
+      lastError = 'Failed to upload episode actions (HTTP ${response.statusCode})';
+      return false;
     } catch (e) {
       if (kDebugMode) print('uploadEpisodeActions error: $e');
+      lastError = AppErrorFormatter.format(e);
       return false;
     }
   }

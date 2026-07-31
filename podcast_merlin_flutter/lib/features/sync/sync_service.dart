@@ -2,6 +2,7 @@ import '../podcasts/rss_feed_parser.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/podcast.dart';
 import '../../core/models/sync_status.dart';
+import '../../core/utils/error_formatter.dart';
 import 'gpodder_api_client.dart';
 import 'secure_storage_service.dart';
 
@@ -12,6 +13,8 @@ class SyncService {
   final SecureStorageService _storage;
   final DatabaseHelper _db;
   final RssFeedParser _rssParser;
+
+  String? lastError;
 
   SyncService({
     GPodderApiClient? apiClient,
@@ -25,47 +28,90 @@ class SyncService {
 
   /// Full synchronization workflow (Pull remote changes, push pending actions, refresh RSS)
   Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
+    lastError = null;
+
     final serverUrl = await _storage.read(SecureStorageService.keyServerUrl);
     final username = await _storage.read(SecureStorageService.keyUsername);
     final password = await _storage.read(SecureStorageService.keyPassword);
 
-    if (serverUrl == null || username == null || password == null) {
+    if (serverUrl == null || serverUrl.isEmpty ||
+        username == null || username.isEmpty ||
+        password == null || password.isEmpty) {
+      lastError = 'Server credentials not configured. Please enter server URL, username, and password in Settings.';
       return false;
     }
 
     try {
       // 1. Push pending local actions first (with collapsing)
       onProgress?.call(SyncStage.pushingActions, 'Pushing local actions to gPodder...');
-      await _pushPendingActions(serverUrl, username, password);
+      final pushedOk = await _pushPendingActions(serverUrl, username, password);
+      if (!pushedOk) {
+        lastError ??= 'Failed to push offline playback actions to gPodder server.';
+      }
 
       // 2. Fetch remote subscription changes
       onProgress?.call(SyncStage.fetchingSubscriptions, 'Fetching subscriptions from gPodder...');
       final lastTsRaw = await _storage.read(SecureStorageService.keyLastActionTimestamp) ?? '0';
       final lastTs = int.tryParse(lastTsRaw) ?? 0;
 
+      final localPodcasts = await _db.getAllPodcasts();
+      // If local database has 0 podcasts, force sinceTimestamp = 0 to retrieve full subscription list from server
+      final fetchSinceTs = localPodcasts.isEmpty ? 0 : lastTs;
+
       final subResponse = await _apiClient.fetchSubscriptions(
         serverUrl: serverUrl,
         username: username,
         password: password,
-        sinceTimestamp: lastTs,
+        sinceTimestamp: fetchSinceTs,
       );
 
+      if (subResponse == null && _apiClient.lastError != null) {
+        lastError = 'Failed to fetch subscriptions: ${_apiClient.lastError}';
+        return false;
+      }
+
       int? newTimestampToSave;
+      List<String> feedErrors = [];
+      List<String> newAddErrors = [];
 
       if (subResponse != null) {
         final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
         final removeList = (subResponse['remove'] as List?)?.cast<String>() ?? [];
 
+        // 2a. Handle podcast removals
+        for (final rssUrl in removeList) {
+          try {
+            await _db.deletePodcastByUrl(rssUrl);
+          } catch (e) {
+            feedErrors.add('Failed to remove $rssUrl: ${AppErrorFormatter.format(e)}');
+          }
+        }
+
+        // 2b. Add new remote subscriptions
         for (final rssUrl in addList) {
           final existing = await _db.getPodcastByRssUrl(rssUrl);
           if (existing == null) {
             onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
-            await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
+            try {
+              await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
+            } catch (e) {
+              final errStr = '$rssUrl: ${AppErrorFormatter.format(e)}';
+              feedErrors.add(errStr);
+              newAddErrors.add(errStr);
+            }
           }
         }
 
-        for (final rssUrl in removeList) {
-          await _db.deletePodcastByUrl(rssUrl);
+        // 2c. Refresh existing local podcasts not included in add/remove delta
+        for (final pod in localPodcasts) {
+          if (!removeList.contains(pod.rssUrl) && !addList.contains(pod.rssUrl)) {
+            onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast: ${pod.title}');
+            try {
+              await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
+            } catch (_) {
+              // Non-fatal error for pre-existing podcast feed refresh
+            }
+          }
         }
 
         if (subResponse['timestamp'] != null) {
@@ -79,7 +125,7 @@ class SyncService {
         serverUrl: serverUrl,
         username: username,
         password: password,
-        sinceTimestamp: lastTs,
+        sinceTimestamp: fetchSinceTs,
       );
 
       for (final action in remoteActions) {
@@ -94,16 +140,22 @@ class SyncService {
         }
       }
 
-      // 4. Save new timestamp ONLY after subscriptions & actions both succeed
-      if (newTimestampToSave != null) {
+      // 4. Save new timestamp ONLY if new subscription feed downloads succeeded
+      if (newAddErrors.isEmpty && newTimestampToSave != null && newTimestampToSave > 0) {
         await _storage.write(
           SecureStorageService.keyLastActionTimestamp,
           newTimestampToSave.toString(),
         );
       }
 
+      if (feedErrors.isNotEmpty) {
+        lastError = 'Sync completed with feed errors:\n${feedErrors.join('\n')}';
+        return false;
+      }
+
       return true;
-    } catch (_) {
+    } catch (e) {
+      lastError = AppErrorFormatter.format(e);
       return false;
     }
   }
@@ -115,6 +167,7 @@ class SyncService {
     final password = await _storage.read(SecureStorageService.keyPassword);
 
     if (serverUrl == null || username == null || password == null) {
+      lastError = 'Server credentials not configured.';
       return false;
     }
 
@@ -137,6 +190,8 @@ class SyncService {
     if (success) {
       final ids = pending.map((a) => a.id!).where((id) => id > 0).toList();
       await _db.markActionsSynced(ids);
+    } else {
+      lastError = _apiClient.lastError ?? 'Failed to upload episode actions.';
     }
     return success;
   }
@@ -146,9 +201,23 @@ class SyncService {
     String rssUrl, {
     SyncProgressCallback? onProgress,
   }) async {
+    lastError = null;
     onProgress?.call(SyncStage.fetchingFeed, 'Downloading & parsing RSS feed...');
-    final feedResult = await _rssParser.parseFeedFromUrl(rssUrl);
-    if (feedResult == null) return null;
+    
+    final RssFeedResult? feedResult;
+    try {
+      feedResult = await _rssParser.parseFeedFromUrl(rssUrl);
+    } catch (e) {
+      final err = 'Failed to download or parse RSS feed ($rssUrl): ${AppErrorFormatter.format(e)}';
+      lastError = err;
+      throw Exception(err);
+    }
+
+    if (feedResult == null) {
+      final err = 'Failed to parse RSS feed from $rssUrl: empty result';
+      lastError = err;
+      throw Exception(err);
+    }
 
     onProgress?.call(SyncStage.fetchingFeed, 'Saving podcast: ${feedResult.title}');
     final podcast = Podcast(
@@ -160,18 +229,23 @@ class SyncService {
       lastUpdated: DateTime.now(),
     );
 
-    final podcastId = await _db.insertOrUpdatePodcast(podcast);
-    final savedPod = await _db.getPodcastByRssUrl(rssUrl);
+    try {
+      final podcastId = await _db.insertOrUpdatePodcast(podcast);
+      final savedPod = await _db.getPodcastByRssUrl(rssUrl);
 
-    final episodes = feedResult.episodes.map((ep) {
-      return ep.copyWith(
-        podcastId: savedPod?.id ?? podcastId,
-        podcastRss: rssUrl,
-      );
-    }).toList();
+      final episodes = feedResult.episodes.map((ep) {
+        return ep.copyWith(
+          podcastId: savedPod?.id ?? podcastId,
+          podcastRss: rssUrl,
+        );
+      }).toList();
 
-    await _db.saveEpisodesBatch(episodes);
-    return savedPod ?? podcast;
+      await _db.saveEpisodesBatch(episodes);
+      return savedPod ?? podcast;
+    } catch (e) {
+      final err = 'Database error saving podcast feed ($rssUrl): ${AppErrorFormatter.format(e)}';
+      lastError = err;
+      throw Exception(err);
+    }
   }
 }
-

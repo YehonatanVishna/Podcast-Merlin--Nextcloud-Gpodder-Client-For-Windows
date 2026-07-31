@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
+import '../widgets/sync_error_banner.dart';
 
 class PodcastCatalogView extends ConsumerWidget {
   final ValueChanged<Podcast>? onPodcastSelected;
@@ -76,6 +77,12 @@ class PodcastCatalogView extends ConsumerWidget {
                 ],
               ),
             ),
+          ] else if (syncStatus.error != null) ...[
+            SyncErrorBanner(
+              errorMessage: syncStatus.error!,
+              onDismiss: () => ref.read(syncStatusNotifierProvider.notifier).clearError(),
+              onRetry: () => ref.read(podcastsNotifierProvider.notifier).refreshAll(),
+            ),
           ],
           Expanded(
             child: podcastsState.when(
@@ -86,7 +93,13 @@ class PodcastCatalogView extends ConsumerWidget {
                   children: [
                     const Icon(Icons.error_outline, size: 48, color: Colors.red),
                     const SizedBox(height: 12),
-                    Text('Error loading catalog: $err'),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Text(
+                        'Error loading catalog: $err',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () => ref.read(podcastsNotifierProvider.notifier).loadPodcasts(),
@@ -219,16 +232,19 @@ class PodcastCatalogView extends ConsumerWidget {
                                 .read(podcastsNotifierProvider.notifier)
                                 .addPodcastFeed(url);
 
+                            final latestError = ref.read(syncStatusNotifierProvider).error;
+
                             if (dialogCtx.mounted) {
                               Navigator.pop(dialogCtx);
                             }
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
+                                  backgroundColor: success ? Colors.green[700] : Colors.red[700],
                                   content: Text(
                                     success
                                         ? 'Subscribed successfully!'
-                                        : 'Failed to parse RSS feed',
+                                        : (latestError ?? 'Failed to parse RSS feed'),
                                   ),
                                 ),
                               );
@@ -330,4 +346,3 @@ class _PodcastCard extends StatelessWidget {
     );
   }
 }
-

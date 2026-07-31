@@ -3,6 +3,7 @@ import '../database/database_helper.dart';
 import '../models/episode.dart';
 import '../models/podcast.dart';
 import '../models/sync_status.dart';
+import '../utils/error_formatter.dart';
 import '../../features/player/audio_player_service.dart';
 import '../../features/sync/gpodder_api_client.dart';
 import '../../features/sync/secure_storage_service.dart';
@@ -25,12 +26,17 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
 
   SyncStatusNotifier(this._sync) : super(const SyncStatusState());
 
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+
   Future<bool> performFullSync() async {
     if (state.isSyncing) return false;
     state = const SyncStatusState(
       isSyncing: true,
       stage: SyncStage.connectingGpodder,
       currentTask: 'Connecting to gPodder...',
+      error: null,
     );
 
     try {
@@ -47,14 +53,14 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
         isSyncing: false,
         stage: success ? SyncStage.completed : SyncStage.error,
         currentTask: null,
-        error: success ? null : 'gPodder sync completed with warnings',
+        error: success ? null : (_sync.lastError ?? 'gPodder sync completed with warnings'),
       );
       return success;
     } catch (e) {
       state = SyncStatusState(
         isSyncing: false,
         stage: SyncStage.error,
-        error: e.toString(),
+        error: AppErrorFormatter.format(e),
       );
       return false;
     }
@@ -66,6 +72,7 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
       stage: SyncStage.fetchingFeed,
       currentTask: 'Downloading & parsing RSS feed...',
       activeFeedUrl: rssUrl,
+      error: null,
     );
 
     try {
@@ -83,14 +90,14 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
       state = SyncStatusState(
         isSyncing: false,
         stage: pod != null ? SyncStage.completed : SyncStage.error,
-        error: pod == null ? 'Failed to parse RSS feed' : null,
+        error: pod == null ? (_sync.lastError ?? 'Failed to parse RSS feed from $rssUrl') : null,
       );
       return pod;
     } catch (e) {
       state = SyncStatusState(
         isSyncing: false,
         stage: SyncStage.error,
-        error: e.toString(),
+        error: AppErrorFormatter.format(e),
       );
       return null;
     }
@@ -131,7 +138,7 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
       }
     } catch (e, st) {
       if (mounted) {
-        state = AsyncValue.error(e, st);
+        state = AsyncValue.error(AppErrorFormatter.format(e), st);
       }
     }
   }
@@ -149,7 +156,11 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
     try {
       await _db.deletePodcastByUrl(rssUrl);
       await loadPodcasts();
-    } catch (_) {}
+    } catch (e, st) {
+      if (mounted) {
+        state = AsyncValue.error('Failed to unsubscribe podcast: ${AppErrorFormatter.format(e)}', st);
+      }
+    }
   }
 
   Future<void> refreshAll() async {
@@ -233,7 +244,7 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
       }
     } catch (e) {
       if (mounted) {
-        state = state.copyWith(isLoading: false, error: e.toString());
+        state = state.copyWith(isLoading: false, error: AppErrorFormatter.format(e));
       }
     }
   }
@@ -241,7 +252,7 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
   Future<void> loadMoreEpisodes() async {
     if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
 
-    state = state.copyWith(isLoadingMore: true);
+    state = state.copyWith(isLoadingMore: true, error: null);
     try {
       final offset = state.episodes.length;
       final podcastId = _podcastId;
@@ -262,7 +273,7 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
       }
     } catch (e) {
       if (mounted) {
-        state = state.copyWith(isLoadingMore: false);
+        state = state.copyWith(isLoadingMore: false, error: 'Failed to load more episodes: ${AppErrorFormatter.format(e)}');
       }
     }
   }
@@ -290,5 +301,3 @@ final episodesNotifierProvider = StateNotifierProvider.autoDispose
     podcastId,
   );
 });
-
-

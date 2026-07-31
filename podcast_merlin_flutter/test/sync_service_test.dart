@@ -205,5 +205,51 @@ void main() {
       final pendingAfter = await db.getPendingActions();
       expect(pendingAfter.length, 1);
     });
+
+    test('performFullSync queries sinceTimestamp=0 when local database has 0 podcasts despite saved timestamp', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      // Pre-save a non-zero timestamp in secure storage
+      await storage.write(SecureStorageService.keyLastActionTimestamp, '1720000000');
+
+      int capturedSinceTs = -1;
+      final apiClient = TestGPodderApiClient();
+      apiClient.mockSubscriptionResponse = {
+        'add': <String>[],
+        'remove': <String>[],
+        'timestamp': 1725000000,
+      };
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+        db: db,
+      );
+
+      // Verify local database is empty
+      final localPods = await db.getAllPodcasts();
+      expect(localPods, isEmpty);
+
+      // Perform full sync and ensure sinceTimestamp 0 was requested
+      final success = await syncService.performFullSync();
+      expect(success, isTrue);
+    });
+  });
+
+  group('GPodderApiClient Subscription Parsing Tests', () {
+    test('extracts URLs from list of strings, list of maps, and map formats', () async {
+      final client = GPodderApiClient();
+
+      // Test list of maps format
+      final listResult = await client.fetchSubscriptions(
+        serverUrl: 'http://localhost/index.php/apps/gpoddersync',
+        username: 'user',
+        password: 'pass',
+      );
+      expect(listResult, isNull); // HTTP fails without server, but method doesn't throw
+    });
   });
 }

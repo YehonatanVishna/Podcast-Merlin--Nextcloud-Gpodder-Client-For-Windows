@@ -1,7 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:xml/xml.dart';
 import '../../core/models/episode.dart';
+import '../../core/utils/error_formatter.dart';
 import '../../core/utils/html_purifier.dart';
+
+class RssParseException implements Exception {
+  final String message;
+  RssParseException(this.message);
+
+  @override
+  String toString() => message;
+}
 
 class RssFeedResult {
   final String title;
@@ -35,18 +44,46 @@ class RssFeedParser {
             );
 
   Future<RssFeedResult?> parseFeedFromUrl(String rssUrl) async {
+    final trimmedUrl = rssUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      throw RssParseException('Invalid feed URL: URL cannot be empty.');
+    }
+    final parsedUri = Uri.tryParse(trimmedUrl);
+    if (parsedUri == null || (!parsedUri.isScheme('http') && !parsedUri.isScheme('https'))) {
+      throw RssParseException('Invalid feed URL scheme. Must begin with http:// or https://');
+    }
+
     try {
-      final response = await _dio.get<String>(rssUrl);
-      if (response.statusCode == 200 && response.data != null) {
-        return parseFeedXml(response.data!, rssUrl);
+      final response = await _dio.get<String>(trimmedUrl);
+      if (response.statusCode == 200 && response.data != null && response.data!.isNotEmpty) {
+        return parseFeedXml(response.data!, trimmedUrl);
+      } else {
+        throw RssParseException('Failed to fetch feed: HTTP ${response.statusCode}');
       }
-    } catch (_) {}
-    return null;
+    } catch (e) {
+      if (e is RssParseException) rethrow;
+      throw RssParseException('Feed download error: ${AppErrorFormatter.format(e)}');
+    }
   }
 
   RssFeedResult parseFeedXml(String xmlString, String rssUrl) {
-    final document = XmlDocument.parse(xmlString);
-    final channel = document.findAllElements('channel').firstOrNull ?? document.rootElement;
+    if (xmlString.trim().isEmpty) {
+      throw RssParseException('RSS feed XML content is empty.');
+    }
+
+    XmlDocument document;
+    try {
+      document = XmlDocument.parse(xmlString);
+    } catch (e) {
+      throw RssParseException('Malformed XML: ${AppErrorFormatter.format(e)}');
+    }
+
+    final channel = document.findAllElements('channel').firstOrNull ??
+        (document.rootElement.name.local == 'feed' ? document.rootElement : null);
+
+    if (channel == null) {
+      throw RssParseException('Invalid RSS/Atom feed format: missing channel or feed root.');
+    }
 
     final title = _getElementText(channel, 'title') ?? 'Untitled Podcast';
     final rawDesc = _getElementText(channel, 'description') ?? _getElementText(channel, 'summary') ?? '';

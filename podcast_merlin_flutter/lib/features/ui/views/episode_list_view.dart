@@ -6,6 +6,7 @@ import '../../../core/models/episode.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
 import '../widgets/purified_html_text.dart';
+import '../widgets/sync_error_banner.dart';
 
 class EpisodeListView extends ConsumerStatefulWidget {
   final Podcast? podcast;
@@ -143,7 +144,22 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                 ],
               ),
             ),
+          ] else if (syncStatus.error != null) ...[
+            SyncErrorBanner(
+              errorMessage: syncStatus.error!,
+              onDismiss: () => ref.read(syncStatusNotifierProvider.notifier).clearError(),
+              onRetry: () => ref
+                  .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                  .refresh(podcast: widget.podcast),
+            ),
           ],
+          if (episodesState.error != null && episodesState.episodes.isNotEmpty)
+            SyncErrorBanner(
+              errorMessage: episodesState.error!,
+              onRetry: () => ref
+                  .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                  .loadMoreEpisodes(),
+            ),
           Expanded(child: _buildBody(context, episodesState, audioHandler)),
         ],
       ),
@@ -162,7 +178,13 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
           children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.red),
             const SizedBox(height: 12),
-            Text('Error loading episodes: ${episodesState.error}'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Text(
+                'Error loading episodes: ${episodesState.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: () {
@@ -451,4 +473,3 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
     );
   }
 }
-
