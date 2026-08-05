@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/database_helper.dart';
 import '../models/episode.dart';
@@ -216,12 +217,36 @@ class EpisodesState {
 class EpisodesNotifier extends StateNotifier<EpisodesState> {
   final DatabaseHelper _db;
   final SyncStatusNotifier _syncStatusNotifier;
+  final MerlinAudioHandler _audioHandler;
   final int? _podcastId;
+  StreamSubscription<PositionUpdateEvent>? _posSub;
   static const int pageSize = 25;
 
-  EpisodesNotifier(this._db, this._syncStatusNotifier, this._podcastId)
+  EpisodesNotifier(this._db, this._syncStatusNotifier, this._audioHandler, this._podcastId)
       : super(const EpisodesState(isLoading: true)) {
     loadEpisodes();
+    _posSub = _audioHandler.onPositionUpdated.listen((event) {
+      updateEpisodeProgress(event.mediaUrl, event.position, event.isPlayed);
+    });
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    super.dispose();
+  }
+
+  void updateEpisodeProgress(String mediaUrl, int position, bool isPlayed) {
+    if (!mounted || state.episodes.isEmpty) return;
+    final index = state.episodes.indexWhere((e) => e.mediaUrl == mediaUrl);
+    if (index != -1) {
+      final updatedList = List<Episode>.from(state.episodes);
+      updatedList[index] = updatedList[index].copyWith(
+        position: position,
+        isPlayed: isPlayed,
+      );
+      state = state.copyWith(episodes: updatedList);
+    }
   }
 
   Future<void> loadEpisodes({EpisodeFilter? filter}) async {
@@ -298,6 +323,7 @@ final episodesNotifierProvider = StateNotifierProvider.autoDispose
   return EpisodesNotifier(
     ref.watch(databaseProvider),
     ref.watch(syncStatusNotifierProvider.notifier),
+    ref.watch(audioHandlerProvider),
     podcastId,
   );
 });

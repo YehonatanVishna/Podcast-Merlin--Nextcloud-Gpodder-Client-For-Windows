@@ -36,6 +36,20 @@ class TestEpisodesNotifier extends StateNotifier<EpisodesState> implements Episo
 
   @override
   Future<void> setFilter(EpisodeFilter filter) async {}
+
+  @override
+  void updateEpisodeProgress(String mediaUrl, int position, bool isPlayed) {
+    if (!mounted || state.episodes.isEmpty) return;
+    final index = state.episodes.indexWhere((e) => e.mediaUrl == mediaUrl);
+    if (index != -1) {
+      final updatedList = List<Episode>.from(state.episodes);
+      updatedList[index] = updatedList[index].copyWith(
+        position: position,
+        isPlayed: isPlayed,
+      );
+      state = state.copyWith(episodes: updatedList);
+    }
+  }
 }
 
 void main() {

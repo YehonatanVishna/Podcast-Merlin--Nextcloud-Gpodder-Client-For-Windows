@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -234,74 +235,11 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                     }
                     final itemIndex = index ~/ 2;
                     final ep = episodesState.episodes[itemIndex];
-                    final isCurrent = audioHandler.currentEpisode?.mediaUrl == ep.mediaUrl;
-
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: ep.imageUrl.isNotEmpty
-                            ? Image.network(
-                                ep.imageUrl,
-                                width: 56,
-                                height: 56,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  width: 56,
-                                  height: 56,
-                                  color: Theme.of(context).colorScheme.primaryContainer,
-                                  child: const Icon(Icons.podcasts),
-                                ),
-                              )
-                            : Container(
-                                width: 56,
-                                height: 56,
-                                color: Theme.of(context).colorScheme.primaryContainer,
-                                child: const Icon(Icons.podcasts),
-                              ),
-                      ),
-                      title: Text(
-                        ep.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                          color: isCurrent ? Theme.of(context).colorScheme.primary : null,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          Text(
-                            ep.publishedAt != null
-                                ? DateFormat.yMMMd().format(ep.publishedAt!)
-                                : 'Unknown Date',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          if (ep.position > 0 && !ep.isFinished) ...[
-                            const SizedBox(height: 4),
-                            LinearProgressIndicator(
-                              value: ep.progressPercentage,
-                              minHeight: 4,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ],
-                        ],
-                      ),
-                      trailing: IconButton(
-                        icon: Icon(
-                          isCurrent ? Icons.volume_up : Icons.play_arrow_rounded,
-                          size: 32,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        onPressed: () {
-                          audioHandler.playEpisode(ep);
-                        },
-                      ),
-                      onTap: () {
-                        _showEpisodeDetailsModal(context, ep);
-                      },
+                    return _EpisodeTile(
+                      episode: ep,
+                      audioHandler: audioHandler,
+                      onTap: () => _showEpisodeDetailsModal(context, ep),
+                      onPlay: () => audioHandler.playEpisode(ep),
                     );
                   },
                   childCount: math.max(0, episodesState.episodes.length * 2 - 1),
@@ -470,6 +408,167 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _EpisodeTile extends StatelessWidget {
+  final Episode episode;
+  final dynamic audioHandler;
+  final VoidCallback onTap;
+  final VoidCallback onPlay;
+
+  const _EpisodeTile({
+    required this.episode,
+    required this.audioHandler,
+    required this.onTap,
+    required this.onPlay,
+  });
+
+  String _formatDuration(int seconds) {
+    final d = Duration(seconds: seconds);
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (d.inHours > 0) {
+      return '${d.inHours}:$minutes:$secs';
+    }
+    return '$minutes:$secs';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Stream<PlaybackState>? playbackStream;
+    try {
+      if (audioHandler is BaseAudioHandler) {
+        playbackStream = (audioHandler as BaseAudioHandler).playbackState;
+      } else if (audioHandler != null && audioHandler.playbackState is Stream<PlaybackState>) {
+        playbackStream = audioHandler.playbackState as Stream<PlaybackState>;
+      }
+    } catch (_) {}
+
+    return StreamBuilder<PlaybackState>(
+      stream: playbackStream,
+      builder: (context, snapshot) {
+        final playbackState = snapshot.data;
+        String? currentMediaUrl;
+        try {
+          currentMediaUrl = audioHandler?.currentEpisode?.mediaUrl;
+        } catch (_) {}
+
+        final isCurrent = currentMediaUrl == episode.mediaUrl;
+
+        int displayPosition = episode.position;
+        int displayDuration = episode.duration;
+        bool isFinished = episode.isFinished;
+
+        if (isCurrent) {
+          if (playbackState != null) {
+            displayPosition = playbackState.position.inSeconds;
+          } else {
+            try {
+              if (audioHandler?.currentEpisode?.position != null) {
+                displayPosition = audioHandler.currentEpisode.position;
+              }
+            } catch (_) {}
+          }
+          int handlerDuration = 0;
+          try {
+            handlerDuration = audioHandler?.mediaItem?.value?.duration?.inSeconds ?? 0;
+          } catch (_) {}
+
+          if (displayDuration <= 0 && handlerDuration > 0) {
+            displayDuration = handlerDuration;
+          }
+          if (displayDuration > 0 && displayPosition >= (displayDuration - 10)) {
+            isFinished = true;
+          }
+        }
+
+        double progressPercentage = 0.0;
+        if (displayDuration > 0) {
+          progressPercentage = (displayPosition / displayDuration).clamp(0.0, 1.0);
+        }
+
+        final showProgress = displayPosition > 0 && !isFinished;
+
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: episode.imageUrl.isNotEmpty
+                ? Image.network(
+                    episode.imageUrl,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 56,
+                      height: 56,
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      child: const Icon(Icons.podcasts),
+                    ),
+                  )
+                : Container(
+                    width: 56,
+                    height: 56,
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    child: const Icon(Icons.podcasts),
+                  ),
+          ),
+          title: Text(
+            episode.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+              color: isCurrent ? Theme.of(context).colorScheme.primary : null,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Text(
+                    episode.publishedAt != null
+                        ? DateFormat.yMMMd().format(episode.publishedAt!)
+                        : 'Unknown Date',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (displayPosition > 0 && displayDuration > 0) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '• ${_formatDuration(displayPosition)} / ${_formatDuration(displayDuration)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isCurrent ? Theme.of(context).colorScheme.primary : null,
+                            fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                    ),
+                  ],
+                ],
+              ),
+              if (showProgress) ...[
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                  value: progressPercentage,
+                  minHeight: 4,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ],
+            ],
+          ),
+          trailing: IconButton(
+            icon: Icon(
+              isCurrent ? Icons.volume_up : Icons.play_arrow_rounded,
+              size: 32,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            onPressed: onPlay,
+          ),
+          onTap: onTap,
+        );
+      },
     );
   }
 }

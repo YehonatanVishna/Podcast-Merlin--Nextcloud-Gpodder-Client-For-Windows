@@ -9,10 +9,14 @@ import '../../core/models/gpodder_action.dart';
 import '../sync/sync_service.dart';
 import 'linux_mpris_service.dart';
 
+typedef PositionUpdateEvent = ({String mediaUrl, int position, bool isPlayed});
+
 class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player = AudioPlayer();
   final DatabaseHelper _db = DatabaseHelper.instance;
   final SyncService _syncService = SyncService();
+  final StreamController<PositionUpdateEvent> _positionUpdateController =
+      StreamController<PositionUpdateEvent>.broadcast();
 
   Episode? _currentEpisode;
   Timer? _positionSyncTimer;
@@ -20,12 +24,15 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
 
   StreamSubscription<PlaybackEvent>? _playbackEventSub;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _positionSub;
 
   MerlinAudioHandler() {
     _initAudioSession();
     _initPlayerListeners();
     LinuxMprisService.instance.init(this);
   }
+
+  Stream<PositionUpdateEvent> get onPositionUpdated => _positionUpdateController.stream;
 
   Episode? get currentEpisode => _currentEpisode;
 
@@ -105,6 +112,22 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       },
     );
 
+    _positionSub = _player.positionStream.listen(
+      (position) {
+        if (_player.playing) {
+          final newState = playbackState.value.copyWith(
+            updatePosition: position,
+            bufferedPosition: _player.bufferedPosition,
+          );
+          playbackState.add(newState);
+          LinuxMprisService.instance.updateState(newState, mediaItem.value);
+        }
+      },
+      onError: (Object e, StackTrace st) {
+        if (kDebugMode) print('PositionStream error: $e');
+      },
+    );
+
     _playerStateSub = _player.playerStateStream.listen(
       (state) {
         if (state.processingState == ProcessingState.completed) {
@@ -128,6 +151,10 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> playEpisode(Episode episode) async {
+    if (_currentEpisode != null && _currentEpisode!.mediaUrl != episode.mediaUrl) {
+      await _enqueueCurrentPositionAction();
+    }
+
     Episode epToPlay = episode;
     if (epToPlay.podcastRss.isEmpty && epToPlay.podcastId != null && epToPlay.podcastId! > 0) {
       final pod = await _db.getPodcastById(epToPlay.podcastId!);
@@ -150,7 +177,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     LinuxMprisService.instance.updateState(playbackState.value, newItem);
 
     try {
-      await _player.setUrl(epToPlay.mediaUrl);
+      await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 5));
       if (epToPlay.position > 0 && epToPlay.position < (epToPlay.duration - 5)) {
         await _player.seek(Duration(seconds: epToPlay.position));
       }
@@ -248,7 +275,9 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     _lastSyncedPosition = currentSec;
 
     final isPlayed = (totalSec > 0 && currentSec >= (totalSec - 10));
+    _currentEpisode = _currentEpisode!.copyWith(position: currentSec, isPlayed: isPlayed);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, currentSec, isPlayed: isPlayed);
+    _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: currentSec, isPlayed: isPlayed));
 
     if (podcastRss.isNotEmpty) {
       final action = GPodderAction(
@@ -278,7 +307,9 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     }
 
     final totalSec = (_player.duration?.inSeconds ?? _currentEpisode!.duration);
+    _currentEpisode = _currentEpisode!.copyWith(position: totalSec, isPlayed: true);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, totalSec, isPlayed: true);
+    _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: totalSec, isPlayed: true));
 
     if (podcastRss.isNotEmpty) {
       final action = GPodderAction(
@@ -299,7 +330,9 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   void dispose() {
     _stopPeriodicPositionSync();
     _playbackEventSub?.cancel();
+    _positionSub?.cancel();
     _playerStateSub?.cancel();
     _player.dispose();
+    _positionUpdateController.close();
   }
 }
