@@ -1,29 +1,116 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
-/// Helper service for background image caching and local file management.
+/// Helper service for persistent local disk image caching and pre-fetching.
 class ImageCacheService {
   ImageCacheService._();
 
-  static final CacheManager _cacheManager = DefaultCacheManager();
+  static Directory? _cacheDir;
+  static final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 4),
+      receiveTimeout: const Duration(seconds: 4),
+    ),
+  );
 
-  /// Pre-fetches a single image URL into local disk cache.
-  static Future<void> precacheImageUrl(String? url) async {
-    if (url == null || url.trim().isEmpty) return;
+  /// Resolves the persistent disk image cache directory in Application Support.
+  static Future<Directory> _getCacheDir() async {
+    if (_cacheDir != null && await _cacheDir!.exists()) return _cacheDir!;
     try {
-      final uri = Uri.tryParse(url.trim());
-      if (uri != null && (uri.isScheme('HTTP') || uri.isScheme('HTTPS'))) {
-        await _cacheManager.downloadFile(url.trim());
+      final appSupportDir = await getApplicationSupportDirectory();
+      final dir = Directory(p.join(appSupportDir.path, 'persistent_image_cache'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('ImageCacheService: Failed to precache image $url: $e');
+      _cacheDir = dir;
+      return dir;
+    } catch (_) {
+      final temp = await getTemporaryDirectory();
+      final dir = Directory(p.join(temp.path, 'persistent_image_cache'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
+      _cacheDir = dir;
+      return dir;
     }
   }
 
-  /// Batch pre-caches a collection of image URLs (with max concurrency of 4).
+  /// Deterministically hashes an image URL into a unique local filename.
+  static String _hashUrl(String url) {
+    final bytes = utf8.encode(url.trim());
+    final hash = md5.convert(bytes).toString();
+    final cleanPath = url.split('?').first.split('#').first.toLowerCase();
+    String extension = '.img';
+    if (cleanPath.endsWith('.png')) {
+      extension = '.png';
+    } else if (cleanPath.endsWith('.jpg') || cleanPath.endsWith('.jpeg')) {
+      extension = '.jpg';
+    } else if (cleanPath.endsWith('.svg')) {
+      extension = '.svg';
+    } else if (cleanPath.endsWith('.webp')) {
+      extension = '.webp';
+    }
+    return '$hash$extension';
+  }
+
+  /// Checks if the image is already stored on persistent disk storage (0ms network lookup).
+  static Future<File?> getCachedFile(String? url) async {
+    if (url == null || url.trim().isEmpty) return null;
+    try {
+      final dir = await _getCacheDir();
+      final filename = _hashUrl(url);
+      final file = File(p.join(dir.path, filename));
+      if (await file.exists()) {
+        return file;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('ImageCacheService: Error checking file cache for $url: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Downloads image via Dio with timeout and saves directly to persistent disk storage.
+  static Future<File?> downloadAndCache(String? url) async {
+    if (url == null || url.trim().isEmpty) return null;
+    final cleanUrl = url.trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) return null;
+
+    final existing = await getCachedFile(cleanUrl);
+    if (existing != null) return existing;
+
+    try {
+      final dir = await _getCacheDir();
+      final filename = _hashUrl(cleanUrl);
+      final file = File(p.join(dir.path, filename));
+      final tempFile = File(p.join(dir.path, '$filename.tmp'));
+
+      await _dio.download(cleanUrl, tempFile.path);
+      if (await tempFile.exists()) {
+        await tempFile.rename(file.path);
+        return file;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('ImageCacheService: Download failed for $cleanUrl: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Pre-fetches a single image URL into local persistent disk storage.
+  static Future<void> precacheImageUrl(String? url) async {
+    await downloadAndCache(url);
+  }
+
+  /// Batch pre-caches a collection of image URLs concurrently in background.
   static Future<void> precacheBatch(Iterable<String?> urls) async {
     final validUrls = urls
         .whereType<String>()
@@ -34,7 +121,7 @@ class ImageCacheService {
     if (validUrls.isEmpty) return;
 
     final urlList = validUrls.toList();
-    const batchSize = 4;
+    const batchSize = 6;
     for (var i = 0; i < urlList.length; i += batchSize) {
       final chunk = urlList.sublist(i, i + batchSize > urlList.length ? urlList.length : i + batchSize);
       await Future.wait(chunk.map((url) => precacheImageUrl(url)));
@@ -43,17 +130,7 @@ class ImageCacheService {
 
   /// Retrieves local cached file path for an image URL if available on disk.
   static Future<String?> getCachedFilePath(String? url) async {
-    if (url == null || url.trim().isEmpty) return null;
-    try {
-      final fileInfo = await _cacheManager.getFileFromCache(url.trim());
-      if (fileInfo != null && await fileInfo.file.exists()) {
-        return fileInfo.file.path;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('ImageCacheService: Error getting cached file path: $e');
-      }
-    }
-    return null;
+    final file = await getCachedFile(url);
+    return file?.path;
   }
 }

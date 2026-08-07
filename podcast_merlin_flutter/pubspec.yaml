@@ -60,6 +60,7 @@ dependencies:
   dbus: ^0.7.14
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:

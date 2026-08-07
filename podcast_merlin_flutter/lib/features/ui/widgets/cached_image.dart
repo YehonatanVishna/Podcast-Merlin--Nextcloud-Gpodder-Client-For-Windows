@@ -1,8 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../core/services/image_cache_service.dart';
 
-/// Reusable cached network image widget with local disk & memory caching.
-class AppCachedImage extends StatelessWidget {
+/// Offline-first persistent cached network image widget.
+class AppCachedImage extends StatefulWidget {
   final String imageUrl;
   final double? width;
   final double? height;
@@ -23,60 +24,113 @@ class AppCachedImage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final cleanUrl = imageUrl.trim();
+  State<AppCachedImage> createState() => _AppCachedImageState();
+}
 
-    final fallback = errorWidget ??
+class _AppCachedImageState extends State<AppCachedImage> {
+  File? _localFile;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppCachedImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _loadImage();
+    }
+  }
+
+  Future<void> _loadImage() async {
+    final cleanUrl = widget.imageUrl.trim();
+    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+      if (mounted) {
+        setState(() {
+          _localFile = null;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    // 1. Check local persistent disk storage FIRST (Instant 0ms lookup)
+    final existingFile = await ImageCacheService.getCachedFile(cleanUrl);
+    if (existingFile != null && mounted) {
+      setState(() {
+        _localFile = existingFile;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // 2. If not in disk cache, attempt background download with short 4s timeout
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    final downloadedFile = await ImageCacheService.downloadAndCache(cleanUrl);
+    if (mounted) {
+      setState(() {
+        _localFile = downloadedFile;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = widget.errorWidget ??
         Container(
-          width: width,
-          height: height,
+          width: widget.width,
+          height: widget.height,
           color: Theme.of(context).colorScheme.primaryContainer,
           child: Icon(
             Icons.podcasts,
-            size: (width != null && width! < 60) ? 24 : 40,
+            size: (widget.width != null && widget.width! < 60) ? 24 : 40,
             color: Theme.of(context).colorScheme.onPrimaryContainer,
           ),
         );
 
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
-      if (borderRadius != null) {
-        return ClipRRect(borderRadius: borderRadius!, child: fallback);
-      }
-      return fallback;
+    Widget content;
+    if (_localFile != null) {
+      content = Image.file(
+        _localFile!,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    } else if (_isLoading) {
+      content = widget.placeholder ??
+          Container(
+            width: widget.width,
+            height: widget.height,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.0),
+              ),
+            ),
+          );
+    } else {
+      content = fallback;
     }
 
-    final loadingWidget = placeholder ??
-        Container(
-          width: width,
-          height: height,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Center(
-            child: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2.0),
-            ),
-          ),
-        );
-
-    Widget imageWidget = CachedNetworkImage(
-      imageUrl: cleanUrl,
-      width: width,
-      height: height,
-      fit: fit,
-      placeholder: (context, url) => loadingWidget,
-      errorWidget: (context, url, error) => fallback,
-      fadeInDuration: const Duration(milliseconds: 200),
-      fadeOutDuration: const Duration(milliseconds: 200),
-    );
-
-    if (borderRadius != null) {
-      imageWidget = ClipRRect(
-        borderRadius: borderRadius!,
-        child: imageWidget,
+    if (widget.borderRadius != null) {
+      content = ClipRRect(
+        borderRadius: widget.borderRadius!,
+        child: content,
       );
     }
 
-    return imageWidget;
+    return content;
   }
 }
