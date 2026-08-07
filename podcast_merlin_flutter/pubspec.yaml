@@ -58,6 +58,8 @@ dependencies:
   audio_session: ^0.1.25
   mpris: ^1.1.0
   dbus: ^0.7.14
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import '../podcasts/rss_feed_parser.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/podcast.dart';
 import '../../core/models/sync_status.dart';
+import '../../core/services/image_cache_service.dart';
 import '../../core/utils/error_formatter.dart';
 import 'gpodder_api_client.dart';
 import 'secure_storage_service.dart';
@@ -74,9 +75,8 @@ class SyncService {
 
       int? newTimestampToSave;
 
-      if (subResponse != null) {
-        final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
-        final removeList = (subResponse['remove'] as List?)?.cast<String>() ?? [];
+      final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
+      final removeList = (subResponse['remove'] as List?)?.cast<String>() ?? [];
 
         // 2a. Handle podcast removals
         for (final rssUrl in removeList) {
@@ -137,7 +137,6 @@ class SyncService {
         if (subResponse['timestamp'] != null) {
           newTimestampToSave = (subResponse['timestamp'] as num).toInt();
         }
-      }
 
       // 3. Fetch remote episode actions
       onProgress?.call(SyncStage.fetchingEpisodeActions, 'Syncing episode playback with gPodder...');
@@ -259,6 +258,11 @@ class SyncService {
       }).toList();
 
       await _db.saveEpisodesBatch(episodes);
+
+      // Pre-cache podcast cover and episode image assets on device
+      ImageCacheService.precacheImageUrl(feedResult.imageUrl);
+      ImageCacheService.precacheBatch(episodes.map((e) => e.imageUrl));
+
       return savedPod ?? podcast;
     } catch (e) {
       final err = 'Database error saving podcast feed ($rssUrl): ${AppErrorFormatter.format(e)}';

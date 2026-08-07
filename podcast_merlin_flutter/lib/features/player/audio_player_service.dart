@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/gpodder_action.dart';
+import '../../core/services/image_cache_service.dart';
 import '../sync/sync_service.dart';
 import 'linux_mpris_service.dart';
 
@@ -166,11 +167,27 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     _currentEpisode = epToPlay;
     _lastSyncedPosition = -1; // Reset stale position marker
 
+    // Pre-cache episode artwork asynchronously
+    if (epToPlay.imageUrl.isNotEmpty) {
+      ImageCacheService.precacheImageUrl(epToPlay.imageUrl);
+    }
+
+    // Use local file URI for MPRIS/OS playback art if already cached, fallback to HTTP URL
+    Uri? artUri;
+    if (epToPlay.imageUrl.isNotEmpty) {
+      final cachedFilePath = await ImageCacheService.getCachedFilePath(epToPlay.imageUrl);
+      if (cachedFilePath != null) {
+        artUri = Uri.file(cachedFilePath);
+      } else {
+        artUri = Uri.tryParse(epToPlay.imageUrl);
+      }
+    }
+
     final newItem = MediaItem(
       id: epToPlay.mediaUrl,
       album: epToPlay.podcastRss,
       title: epToPlay.title,
-      artUri: epToPlay.imageUrl.isNotEmpty ? Uri.tryParse(epToPlay.imageUrl) : null,
+      artUri: artUri,
       duration: Duration(seconds: epToPlay.duration),
     );
     mediaItem.add(newItem);

@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
+import '../widgets/cached_image.dart';
 import '../widgets/sync_error_banner.dart';
 
 class PodcastCatalogView extends ConsumerWidget {
@@ -299,19 +300,14 @@ class _PodcastCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  podcast.imageUrl.isNotEmpty
-                      ? Image.network(
-                          podcast.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => SvgPicture.asset(
-                            'assets/images/logo.svg',
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : SvgPicture.asset(
-                          'assets/images/logo.svg',
-                          fit: BoxFit.cover,
-                        ),
+                  AppCachedImage(
+                    imageUrl: podcast.imageUrl,
+                    fit: BoxFit.cover,
+                    errorWidget: SvgPicture.asset(
+                      'assets/images/logo.svg',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                   if (podcast.isDead)
                     Positioned(
                       top: 4,

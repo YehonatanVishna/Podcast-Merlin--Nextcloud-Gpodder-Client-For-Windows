@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
+import '../widgets/cached_image.dart';
 import '../widgets/purified_html_text.dart';
 import '../widgets/sync_error_banner.dart';
 
@@ -297,27 +298,11 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
+                AppCachedImage(
+                  imageUrl: podcast.imageUrl,
+                  width: 80,
+                  height: 80,
                   borderRadius: BorderRadius.circular(8),
-                  child: podcast.imageUrl.isNotEmpty
-                      ? Image.network(
-                          podcast.imageUrl,
-                          width: 80,
-                          height: 80,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            width: 80,
-                            height: 80,
-                            color: Theme.of(context).colorScheme.primaryContainer,
-                            child: const Icon(Icons.podcasts, size: 40),
-                          ),
-                        )
-                      : Container(
-                          width: 80,
-                          height: 80,
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          child: const Icon(Icons.podcasts, size: 40),
-                        ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -501,27 +486,11 @@ class _EpisodeTile extends StatelessWidget {
 
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: ClipRRect(
+          leading: AppCachedImage(
+            imageUrl: episode.imageUrl,
+            width: 56,
+            height: 56,
             borderRadius: BorderRadius.circular(6),
-            child: episode.imageUrl.isNotEmpty
-                ? Image.network(
-                    episode.imageUrl,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 56,
-                      height: 56,
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      child: const Icon(Icons.podcasts),
-                    ),
-                  )
-                : Container(
-                    width: 56,
-                    height: 56,
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    child: const Icon(Icons.podcasts),
-                  ),
           ),
           title: Text(
             episode.title,

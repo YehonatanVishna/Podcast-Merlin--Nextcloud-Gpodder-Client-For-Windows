@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/episode.dart';
 import '../models/podcast.dart';
 import '../models/sync_status.dart';
+import '../services/image_cache_service.dart';
 import '../utils/error_formatter.dart';
 import '../../features/player/audio_player_service.dart';
 import '../../features/sync/gpodder_api_client.dart';
@@ -142,6 +143,7 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
       final list = await _db.getAllPodcasts();
       if (mounted) {
         state = AsyncValue.data(list);
+        ImageCacheService.precacheBatch(list.map((p) => p.imageUrl));
       }
     } catch (e, st) {
       if (mounted) {
@@ -272,6 +274,7 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
           hasMore: list.length >= pageSize,
           filter: currentFilter,
         );
+        ImageCacheService.precacheBatch(list.map((e) => e.imageUrl));
       }
     } catch (e) {
       if (mounted) {

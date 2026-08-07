@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_providers.dart';
+import 'cached_image.dart';
 
 class PlayerDock extends ConsumerWidget {
   const PlayerDock({super.key});
@@ -79,27 +80,11 @@ class PlayerDock extends ConsumerWidget {
                   Row(
                     children: [
                       // Thumbnail Artwork
-                      ClipRRect(
+                      AppCachedImage(
+                        imageUrl: imageUrl,
+                        width: 48,
+                        height: 48,
                         borderRadius: BorderRadius.circular(8),
-                        child: imageUrl.isNotEmpty
-                            ? Image.network(
-                                imageUrl,
-                                width: 48,
-                                height: 48,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  width: 48,
-                                  height: 48,
-                                  color: Theme.of(context).colorScheme.primaryContainer,
-                                  child: const Icon(Icons.podcasts),
-                                ),
-                              )
-                            : Container(
-                                width: 48,
-                                height: 48,
-                                color: Theme.of(context).colorScheme.primaryContainer,
-                                child: const Icon(Icons.podcasts),
-                              ),
                       ),
                       const SizedBox(width: 12),
                       // Title & Podcast Name
