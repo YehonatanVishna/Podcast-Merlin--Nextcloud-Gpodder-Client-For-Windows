@@ -154,6 +154,14 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   .refresh(podcast: widget.podcast),
             ),
           ],
+          if (widget.podcast != null && (widget.podcast!.isDead || widget.podcast!.lastFeedError != null)) ...[
+            SyncErrorBanner(
+              errorMessage: 'Feed unreachable: ${widget.podcast!.lastFeedError ?? "This RSS feed is dead or inaccessible."}',
+              onRetry: () => ref
+                  .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                  .refresh(podcast: widget.podcast),
+            ),
+          ],
           if (episodesState.error != null && episodesState.episodes.isNotEmpty)
             SyncErrorBanner(
               errorMessage: episodesState.error!,

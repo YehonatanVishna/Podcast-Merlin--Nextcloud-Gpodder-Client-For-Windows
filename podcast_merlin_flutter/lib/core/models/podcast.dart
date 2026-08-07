@@ -6,6 +6,9 @@ class Podcast {
   final String description;
   final String link;
   final DateTime? lastUpdated;
+  final bool isDead;
+  final String? lastFeedError;
+  final int feedErrorCount;
 
   const Podcast({
     this.id,
@@ -15,6 +18,9 @@ class Podcast {
     required this.description,
     required this.link,
     this.lastUpdated,
+    this.isDead = false,
+    this.lastFeedError,
+    this.feedErrorCount = 0,
   });
 
   Podcast copyWith({
@@ -25,6 +31,9 @@ class Podcast {
     String? description,
     String? link,
     DateTime? lastUpdated,
+    bool? isDead,
+    String? lastFeedError,
+    int? feedErrorCount,
   }) {
     return Podcast(
       id: id ?? this.id,
@@ -34,6 +43,9 @@ class Podcast {
       description: description ?? this.description,
       link: link ?? this.link,
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      isDead: isDead ?? this.isDead,
+      lastFeedError: lastFeedError ?? this.lastFeedError,
+      feedErrorCount: feedErrorCount ?? this.feedErrorCount,
     );
   }
 
@@ -46,11 +58,15 @@ class Podcast {
       'description': description,
       'websiteUrl': link,
       'lastUpdated': lastUpdated?.toIso8601String(),
+      'isDead': isDead ? 1 : 0,
+      'lastFeedError': lastFeedError,
+      'feedErrorCount': feedErrorCount,
     };
   }
 
   factory Podcast.fromMap(Map<String, dynamic> map) {
     final lastUpdatedVal = map['lastUpdated'] ?? map['last_updated'];
+    final rawIsDead = map['isDead'] ?? map['is_dead'];
     return Podcast(
       id: map['id'] as int?,
       rssUrl: (map['rssUrl'] ?? map['rss_url'] ?? '').toString(),
@@ -59,6 +75,9 @@ class Podcast {
       description: (map['description'] ?? '').toString(),
       link: (map['websiteUrl'] ?? map['link'] ?? '').toString(),
       lastUpdated: lastUpdatedVal != null ? DateTime.tryParse(lastUpdatedVal.toString()) : null,
+      isDead: rawIsDead == 1 || rawIsDead == true,
+      lastFeedError: map['lastFeedError'] ?? map['last_feed_error'],
+      feedErrorCount: (map['feedErrorCount'] ?? map['feed_error_count'] ?? 0) as int,
     );
   }
 }

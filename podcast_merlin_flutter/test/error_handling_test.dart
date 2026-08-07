@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:podcast_merlin_flutter/core/database/database_helper.dart';
 import 'package:podcast_merlin_flutter/core/utils/error_formatter.dart';
+import 'package:podcast_merlin_flutter/features/sync/secure_storage_service.dart';
 import 'package:podcast_merlin_flutter/features/podcasts/rss_feed_parser.dart';
 import 'package:podcast_merlin_flutter/features/sync/gpodder_api_client.dart';
 import 'package:podcast_merlin_flutter/features/sync/sync_service.dart';
@@ -141,11 +144,24 @@ void main() {
   });
 
   group('SyncService & SyncStatusNotifier Error Propagation Tests', () {
+    late DatabaseHelper db;
+
+    setUp(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      db = DatabaseHelper.instance;
+      final database = await db.database;
+      await database.delete('gpodder_actions');
+      await database.delete('episodes');
+      await database.delete('podcasts');
+    });
+
     test('performFullSync sets lastError and returns false when credentials missing', () async {
       final emptyStorage = TestSecureStorageService();
       final syncService = SyncService(
         apiClient: TestGPodderApiClient(),
         storage: emptyStorage,
+        db: db,
       );
 
       final result = await syncService.performFullSync();
@@ -158,6 +174,7 @@ void main() {
       final syncService = SyncService(
         apiClient: TestGPodderApiClient(),
         storage: emptyStorage,
+        db: db,
       );
       final notifier = SyncStatusNotifier(syncService);
 
@@ -182,6 +199,7 @@ void main() {
       final syncService = SyncService(
         apiClient: apiClient,
         storage: storage,
+        db: db,
       );
       final notifier = SyncStatusNotifier(syncService);
 
@@ -190,7 +208,7 @@ void main() {
       expect(notifier.state.error, contains('Failed to fetch subscriptions: HTTP 401 Unauthorized'));
     });
 
-    test('SyncStatusNotifier surfaces feed parsing root error when new feed download fails', () async {
+    test('SyncStatusNotifier captures feed warnings and saves timestamp when a feed in add fails', () async {
       final storage = TestSecureStorageService(
         serverUrl: 'https://example.com/gpodder',
         username: 'user',
@@ -198,7 +216,7 @@ void main() {
       );
       final apiClient = TestGPodderApiClient();
       apiClient.mockSubscriptionResponse = {
-        'add': ['https://invalid-domain-does-not-exist.test/rss.xml'],
+        'add': ['https://www1.nobexpartners.com/getfeed.ashx?id=46434&list=TANDZCLASSICS'],
         'remove': <String>[],
         'timestamp': 1720000000,
       };
@@ -206,17 +224,18 @@ void main() {
       final syncService = SyncService(
         apiClient: apiClient,
         storage: storage,
+        db: db,
       );
       final notifier = SyncStatusNotifier(syncService);
 
       final success = await notifier.performFullSync();
-      expect(success, isFalse);
-      expect(notifier.state.error, contains('Sync completed with feed errors:'));
-      expect(notifier.state.error, contains('https://invalid-domain-does-not-exist.test/rss.xml'));
+      expect(success, isTrue);
+      expect(notifier.state.hasFeedWarnings, isTrue);
+      expect(notifier.state.feedWarnings.first, contains('https://www1.nobexpartners.com/getfeed.ashx?id=46434&list=TANDZCLASSICS'));
 
-      // Verify last action timestamp was NOT saved due to feed error
-      final savedTs = await storage.read('gpodder_last_action_timestamp');
-      expect(savedTs, isNull);
+      // Verify action timestamp was saved so sync engine is not blocked
+      final savedTs = await storage.read(SecureStorageService.keyLastActionTimestamp);
+      expect(savedTs, equals('1720000000'));
     });
   });
 }

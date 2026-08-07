@@ -58,6 +58,35 @@ void main() {
       expect(fetched2.description, 'Updated Description');
     });
 
+    test('markPodcastDead, markPodcastHealthy and getDeadPodcasts track dead feed status', () async {
+      final podcast = const Podcast(
+        rssUrl: 'https://example.com/dead_test.xml',
+        title: 'Dead Test Show',
+        description: 'Testing dead feed state',
+        imageUrl: '',
+        link: '',
+      );
+
+      await db.insertOrUpdatePodcast(podcast);
+
+      // Mark podcast dead
+      await db.markPodcastDead('https://example.com/dead_test.xml', 'HTTP 403 Forbidden');
+      
+      final deadList = await db.getDeadPodcasts();
+      expect(deadList.length, equals(1));
+      expect(deadList.first.isDead, isTrue);
+      expect(deadList.first.lastFeedError, equals('HTTP 403 Forbidden'));
+      expect(deadList.first.feedErrorCount, equals(1));
+
+      // Mark podcast healthy
+      await db.markPodcastHealthy('https://example.com/dead_test.xml');
+      
+      final healthyPod = await db.getPodcastByRssUrl('https://example.com/dead_test.xml');
+      expect(healthyPod!.isDead, isFalse);
+      expect(healthyPod.lastFeedError, isNull);
+      expect(healthyPod.feedErrorCount, equals(0));
+    });
+
     test('deletePodcastByUrl removes podcast and associated episodes', () async {
       final podcast = Podcast(
         rssUrl: 'https://example.com/to_delete.xml',

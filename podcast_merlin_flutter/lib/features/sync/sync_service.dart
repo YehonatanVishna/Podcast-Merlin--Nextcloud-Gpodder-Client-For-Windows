@@ -15,6 +15,7 @@ class SyncService {
   final RssFeedParser _rssParser;
 
   String? lastError;
+  List<String> lastFeedWarnings = [];
 
   SyncService({
     GPodderApiClient? apiClient,
@@ -29,6 +30,7 @@ class SyncService {
   /// Full synchronization workflow (Pull remote changes, push pending actions, refresh RSS)
   Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
     lastError = null;
+    lastFeedWarnings = [];
 
     final serverUrl = await _storage.read(SecureStorageService.keyServerUrl);
     final username = await _storage.read(SecureStorageService.keyUsername);
@@ -71,8 +73,6 @@ class SyncService {
       }
 
       int? newTimestampToSave;
-      List<String> feedErrors = [];
-      List<String> newAddErrors = [];
 
       if (subResponse != null) {
         final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
@@ -83,21 +83,37 @@ class SyncService {
           try {
             await _db.deletePodcastByUrl(rssUrl);
           } catch (e) {
-            feedErrors.add('Failed to remove $rssUrl: ${AppErrorFormatter.format(e)}');
+            lastFeedWarnings.add('Failed to remove $rssUrl: ${AppErrorFormatter.format(e)}');
           }
         }
 
         // 2b. Add new remote subscriptions
         for (final rssUrl in addList) {
           final existing = await _db.getPodcastByRssUrl(rssUrl);
-          if (existing == null) {
+          if (existing == null || existing.isDead) {
             onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
             try {
               await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
             } catch (e) {
-              final errStr = '$rssUrl: ${AppErrorFormatter.format(e)}';
-              feedErrors.add(errStr);
-              newAddErrors.add(errStr);
+              final errStr = AppErrorFormatter.format(e);
+              final fullErr = '$rssUrl: $errStr';
+              lastFeedWarnings.add(fullErr);
+
+              // Store a dead podcast stub in local database so it is saved in subs
+              // and future sync cycles do not continuously block timestamp updates
+              final stubTitle = _extractTitleFromUrl(rssUrl);
+              final deadPod = Podcast(
+                rssUrl: rssUrl,
+                title: stubTitle,
+                imageUrl: '',
+                description: 'Feed unavailable ($errStr)',
+                link: rssUrl,
+                lastUpdated: DateTime.now(),
+                isDead: true,
+                lastFeedError: errStr,
+                feedErrorCount: 1,
+              );
+              await _db.insertOrUpdatePodcast(deadPod);
             }
           }
         }
@@ -108,8 +124,12 @@ class SyncService {
             onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast: ${pod.title}');
             try {
               await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
-            } catch (_) {
-              // Non-fatal error for pre-existing podcast feed refresh
+              await _db.markPodcastHealthy(pod.rssUrl);
+            } catch (e) {
+              final errStr = AppErrorFormatter.format(e);
+              final fullErr = '${pod.title} (${pod.rssUrl}): $errStr';
+              lastFeedWarnings.add(fullErr);
+              await _db.markPodcastDead(pod.rssUrl, errStr);
             }
           }
         }
@@ -140,17 +160,12 @@ class SyncService {
         }
       }
 
-      // 4. Save new timestamp ONLY if new subscription feed downloads succeeded
-      if (newAddErrors.isEmpty && newTimestampToSave != null && newTimestampToSave > 0) {
+      // 4. Save new timestamp (dead feeds are recorded in subs as dead podcasts so sync timestamp can advance safely)
+      if (newTimestampToSave != null && newTimestampToSave > 0) {
         await _storage.write(
           SecureStorageService.keyLastActionTimestamp,
           newTimestampToSave.toString(),
         );
-      }
-
-      if (feedErrors.isNotEmpty) {
-        lastError = 'Sync completed with feed errors:\n${feedErrors.join('\n')}';
-        return false;
       }
 
       return true;
@@ -227,6 +242,9 @@ class SyncService {
       description: feedResult.description,
       link: feedResult.link,
       lastUpdated: DateTime.now(),
+      isDead: false,
+      lastFeedError: null,
+      feedErrorCount: 0,
     );
 
     try {
@@ -246,6 +264,22 @@ class SyncService {
       final err = 'Database error saving podcast feed ($rssUrl): ${AppErrorFormatter.format(e)}';
       lastError = err;
       throw Exception(err);
+    }
+  }
+
+  String _extractTitleFromUrl(String rssUrl) {
+    try {
+      final uri = Uri.parse(rssUrl);
+      final listParam = uri.queryParameters['list'];
+      if (listParam != null && listParam.isNotEmpty) {
+        return listParam;
+      }
+      if (uri.pathSegments.isNotEmpty && uri.pathSegments.last.isNotEmpty) {
+        return uri.pathSegments.last;
+      }
+      return uri.host.isNotEmpty ? uri.host : rssUrl;
+    } catch (_) {
+      return rssUrl;
     }
   }
 }

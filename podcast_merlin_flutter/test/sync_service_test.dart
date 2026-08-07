@@ -237,6 +237,82 @@ void main() {
       final success = await syncService.performFullSync();
       expect(success, isTrue);
     });
+
+    test('performFullSync creates dead podcast stub in SQLite DB when adding a failing RSS feed', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient();
+      final deadFeedUrl = 'https://www1.nobexpartners.com/getfeed.ashx?id=46434&list=TANDZCLASSICS';
+      apiClient.mockSubscriptionResponse = {
+        'add': [deadFeedUrl],
+        'remove': <String>[],
+        'timestamp': 1726000000,
+      };
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+        db: db,
+      );
+
+      final success = await syncService.performFullSync();
+      expect(success, isTrue);
+      expect(syncService.lastFeedWarnings.isNotEmpty, isTrue);
+      expect(syncService.lastFeedWarnings.first, contains('TANDZCLASSICS'));
+
+      // Check SQLite DB for the dead podcast stub
+      final pod = await db.getPodcastByRssUrl(deadFeedUrl);
+      expect(pod, isNotNull);
+      expect(pod!.isDead, isTrue);
+      expect(pod.title, equals('TANDZCLASSICS'));
+      expect(pod.lastFeedError, contains('Failed to download or parse RSS feed'));
+      expect(pod.feedErrorCount, equals(1));
+
+      // Verify timestamp was updated so future syncs advance
+      final lastTs = await storage.read(SecureStorageService.keyLastActionTimestamp);
+      expect(lastTs, equals('1726000000'));
+    });
+
+    test('performFullSync marks existing podcast dead when refresh fails', () async {
+      final storage = TestSecureStorageService(
+        serverUrl: 'https://example.com/gpodder',
+        username: 'user',
+        password: 'pass',
+      );
+      final apiClient = TestGPodderApiClient();
+      apiClient.mockSubscriptionResponse = {
+        'add': <String>[],
+        'remove': <String>[],
+        'timestamp': 1727000000,
+      };
+
+      final healthyPod = const Podcast(
+        rssUrl: 'https://unreachable-host.example/podcast.xml',
+        title: 'Failing Podcast',
+        imageUrl: '',
+        description: 'Existing pod',
+        link: '',
+      );
+      await db.insertOrUpdatePodcast(healthyPod);
+
+      final syncService = SyncService(
+        apiClient: apiClient,
+        storage: storage,
+        db: db,
+      );
+
+      final success = await syncService.performFullSync();
+      expect(success, isTrue);
+
+      final updatedPod = await db.getPodcastByRssUrl('https://unreachable-host.example/podcast.xml');
+      expect(updatedPod, isNotNull);
+      expect(updatedPod!.isDead, isTrue);
+      expect(updatedPod.lastFeedError, isNotNull);
+      expect(updatedPod.feedErrorCount, equals(1));
+    });
   });
 
   group('GPodderApiClient Subscription Parsing Tests', () {

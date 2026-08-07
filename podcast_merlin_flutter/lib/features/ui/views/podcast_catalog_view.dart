@@ -83,6 +83,12 @@ class PodcastCatalogView extends ConsumerWidget {
               onDismiss: () => ref.read(syncStatusNotifierProvider.notifier).clearError(),
               onRetry: () => ref.read(podcastsNotifierProvider.notifier).refreshAll(),
             ),
+          ] else if (syncStatus.hasFeedWarnings) ...[
+            SyncErrorBanner(
+              errorMessage: 'Sync completed, but dead/failing podcast feed(s) were detected:\n${syncStatus.feedWarnings.join('\n')}',
+              onDismiss: () => ref.read(syncStatusNotifierProvider.notifier).clearWarnings(),
+              onRetry: () => ref.read(podcastsNotifierProvider.notifier).refreshAll(),
+            ),
           ],
           Expanded(
             child: podcastsState.when(
@@ -306,6 +312,33 @@ class _PodcastCard extends StatelessWidget {
                           'assets/images/logo.svg',
                           fit: BoxFit.cover,
                         ),
+                  if (podcast.isDead)
+                    Positioned(
+                      top: 4,
+                      left: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red[800],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.warning_amber_rounded, size: 12, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Dead Feed',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   Positioned(
                     top: 4,
                     right: 4,
@@ -333,11 +366,25 @@ class _PodcastCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text(
-                podcast.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    podcast.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  if (podcast.isDead && podcast.lastFeedError != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      podcast.lastFeedError!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: Colors.red[700], fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

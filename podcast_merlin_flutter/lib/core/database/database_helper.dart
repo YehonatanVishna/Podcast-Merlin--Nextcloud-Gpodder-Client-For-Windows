@@ -74,6 +74,22 @@ class DatabaseHelper {
       } else if (podCols.contains('rss_url')) {
         _podcastRssUrlCol = 'rss_url';
       }
+
+      if (!podCols.contains('isDead') && !podCols.contains('is_dead')) {
+        try {
+          await db.execute('ALTER TABLE podcasts ADD COLUMN isDead INTEGER DEFAULT 0;');
+        } catch (_) {}
+      }
+      if (!podCols.contains('lastFeedError') && !podCols.contains('last_feed_error')) {
+        try {
+          await db.execute('ALTER TABLE podcasts ADD COLUMN lastFeedError TEXT;');
+        } catch (_) {}
+      }
+      if (!podCols.contains('feedErrorCount') && !podCols.contains('feed_error_count')) {
+        try {
+          await db.execute('ALTER TABLE podcasts ADD COLUMN feedErrorCount INTEGER DEFAULT 0;');
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
@@ -112,7 +128,10 @@ class DatabaseHelper {
         description TEXT,
         imageUrl TEXT,
         websiteUrl TEXT,
-        lastUpdated TEXT
+        lastUpdated TEXT,
+        isDead INTEGER DEFAULT 0,
+        lastFeedError TEXT,
+        feedErrorCount INTEGER DEFAULT 0
       )
     ''');
 
@@ -206,6 +225,48 @@ class DatabaseHelper {
       where: '$_podcastRssUrlCol = ?',
       whereArgs: [rssUrl],
     );
+  }
+
+  Future<void> markPodcastDead(String rssUrl, String errorMessage) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final existing = await getPodcastByRssUrl(rssUrl);
+    final currentCount = existing?.feedErrorCount ?? 0;
+    await db.update(
+      'podcasts',
+      {
+        'isDead': 1,
+        'lastFeedError': errorMessage,
+        'feedErrorCount': currentCount + 1,
+      },
+      where: '$_podcastRssUrlCol = ?',
+      whereArgs: [rssUrl],
+    );
+  }
+
+  Future<void> markPodcastHealthy(String rssUrl) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    await db.update(
+      'podcasts',
+      {
+        'isDead': 0,
+        'lastFeedError': null,
+        'feedErrorCount': 0,
+      },
+      where: '$_podcastRssUrlCol = ?',
+      whereArgs: [rssUrl],
+    );
+  }
+
+  Future<List<Podcast>> getDeadPodcasts() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final maps = await db.query(
+      'podcasts',
+      where: 'isDead = 1 OR lastFeedError IS NOT NULL',
+    );
+    return maps.map((m) => Podcast.fromMap(m)).toList();
   }
 
   // EPISODE CRUD OPERATIONS

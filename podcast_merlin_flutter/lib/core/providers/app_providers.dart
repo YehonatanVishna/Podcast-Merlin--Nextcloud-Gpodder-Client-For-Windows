@@ -31,6 +31,10 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
     state = state.copyWith(error: null);
   }
 
+  void clearWarnings() {
+    state = state.copyWith(feedWarnings: const []);
+  }
+
   Future<bool> performFullSync() async {
     if (state.isSyncing) return false;
     state = const SyncStatusState(
@@ -38,6 +42,7 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
       stage: SyncStage.connectingGpodder,
       currentTask: 'Connecting to gPodder...',
       error: null,
+      feedWarnings: [],
     );
 
     try {
@@ -55,6 +60,7 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
         stage: success ? SyncStage.completed : SyncStage.error,
         currentTask: null,
         error: success ? null : (_sync.lastError ?? 'gPodder sync completed with warnings'),
+        feedWarnings: _sync.lastFeedWarnings,
       );
       return success;
     } catch (e) {
