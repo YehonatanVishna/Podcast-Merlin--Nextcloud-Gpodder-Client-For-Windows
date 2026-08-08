@@ -87,9 +87,17 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
             MediaControl.stop,
           ],
           systemActions: const {
+            MediaAction.play,
+            MediaAction.pause,
+            MediaAction.playPause,
+            MediaAction.stop,
             MediaAction.seek,
             MediaAction.seekForward,
             MediaAction.seekBackward,
+            MediaAction.rewind,
+            MediaAction.fastForward,
+            MediaAction.skipToNext,
+            MediaAction.skipToPrevious,
             MediaAction.setSpeed,
           },
           androidCompactActionIndices: const [0, 1, 2],
@@ -141,6 +149,15 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  Future<void> _setActiveAudioSession(bool active) async {
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(active);
+    } catch (e) {
+      if (kDebugMode) print('AudioSession setActive error: $e');
+    }
+  }
+
   @override
   Future<void> rewind() async {
     await seekRelative(-15);
@@ -151,16 +168,32 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     await seekRelative(30);
   }
 
+  @override
+  Future<void> skipToNext() async {
+    await fastForward();
+  }
+
+  @override
+  Future<void> skipToPrevious() async {
+    await rewind();
+  }
+
   Future<void> playEpisode(Episode episode) async {
     if (_currentEpisode != null && _currentEpisode!.mediaUrl != episode.mediaUrl) {
       await _enqueueCurrentPositionAction();
     }
 
     Episode epToPlay = episode;
-    if (epToPlay.podcastRss.isEmpty && epToPlay.podcastId != null && epToPlay.podcastId! > 0) {
+    String showTitle = 'Podcast Merlin';
+    if (epToPlay.podcastId != null && epToPlay.podcastId! > 0) {
       final pod = await _db.getPodcastById(epToPlay.podcastId!);
       if (pod != null) {
-        epToPlay = epToPlay.copyWith(podcastRss: pod.rssUrl);
+        if (pod.rssUrl.isNotEmpty) {
+          epToPlay = epToPlay.copyWith(podcastRss: pod.rssUrl);
+        }
+        if (pod.title.isNotEmpty) {
+          showTitle = pod.title;
+        }
       }
     }
 
@@ -172,12 +205,16 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       ImageCacheService.precacheImageUrl(epToPlay.imageUrl);
     }
 
-    // Use local file URI for MPRIS/OS playback art if already cached, fallback to HTTP URL
+    // Use local file URI for MPRIS/OS playback art if on Linux and cached; use network URL on Android/Web
     Uri? artUri;
     if (epToPlay.imageUrl.isNotEmpty) {
-      final cachedFilePath = await ImageCacheService.getCachedFilePath(epToPlay.imageUrl);
-      if (cachedFilePath != null) {
-        artUri = Uri.file(cachedFilePath);
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        final cachedFilePath = await ImageCacheService.getCachedFilePath(epToPlay.imageUrl);
+        if (cachedFilePath != null) {
+          artUri = Uri.file(cachedFilePath);
+        } else {
+          artUri = Uri.tryParse(epToPlay.imageUrl);
+        }
       } else {
         artUri = Uri.tryParse(epToPlay.imageUrl);
       }
@@ -185,16 +222,44 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
 
     final newItem = MediaItem(
       id: epToPlay.mediaUrl,
-      album: epToPlay.podcastRss,
+      album: showTitle,
+      artist: showTitle,
       title: epToPlay.title,
       artUri: artUri,
       duration: Duration(seconds: epToPlay.duration),
     );
     mediaItem.add(newItem);
-    LinuxMprisService.instance.updateState(playbackState.value, newItem);
+
+    final initialLoadingState = playbackState.value.copyWith(
+      controls: [
+        MediaControl.rewind,
+        MediaControl.pause,
+        MediaControl.fastForward,
+        MediaControl.stop,
+      ],
+      systemActions: const {
+        MediaAction.play,
+        MediaAction.pause,
+        MediaAction.playPause,
+        MediaAction.stop,
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+        MediaAction.rewind,
+        MediaAction.fastForward,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+        MediaAction.setSpeed,
+      },
+      androidCompactActionIndices: const [0, 1, 2],
+      processingState: AudioProcessingState.loading,
+      playing: true,
+    );
+    playbackState.add(initialLoadingState);
+    LinuxMprisService.instance.updateState(initialLoadingState, newItem);
 
     try {
-      await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 5));
+      await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
       if (epToPlay.position > 0 && epToPlay.position < (epToPlay.duration - 5)) {
         await _player.seek(Duration(seconds: epToPlay.position));
       }
@@ -204,12 +269,19 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       // Swallowed on rapid track change
     } catch (e) {
       if (kDebugMode) print('Error playing episode: $e');
+      final errorState = playbackState.value.copyWith(
+        playing: false,
+        processingState: AudioProcessingState.idle,
+      );
+      playbackState.add(errorState);
+      LinuxMprisService.instance.updateState(errorState, mediaItem.value);
     }
   }
 
   @override
   Future<void> play() async {
     try {
+      await _setActiveAudioSession(true);
       await _player.play();
       _startPeriodicPositionSync();
     } catch (_) {}
@@ -228,6 +300,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> stop() async {
     try {
       await _player.stop();
+      await _setActiveAudioSession(false);
       _stopPeriodicPositionSync();
       await _enqueueCurrentPositionAction();
     } catch (_) {}

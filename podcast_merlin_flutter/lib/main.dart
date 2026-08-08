@@ -35,13 +35,14 @@ void main() async {
   // media session (Android notification shade, lock-screen controls, etc.)
   final audioHandler = await AudioService.init(
     builder: () => MerlinAudioHandler(),
-    config: AudioServiceConfig(
+    config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.podcastmerlin.audio',
       androidNotificationChannelName: 'Podcast Merlin Playback',
-      androidNotificationOngoing: false,
-      androidStopForegroundOnPause: false,
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
       androidNotificationClickStartsActivity: true,
-      androidNotificationIcon: 'mipmap/ic_launcher',
+      androidNotificationIcon: 'drawable/ic_stat_podcast',
+      androidShowNotificationBadge: true,
     ),
   );
 
