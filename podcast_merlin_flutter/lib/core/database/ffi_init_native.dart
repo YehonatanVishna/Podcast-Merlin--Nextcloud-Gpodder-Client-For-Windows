@@ -13,6 +13,9 @@ void setupFfi() {
     databaseFactory = databaseFactoryFfi;
     try {
       JustAudioMediaKit.ensureInitialized();
-    } catch (_) {}
+    } catch (e) {
+      // ignore: avoid_print
+      print('JustAudioMediaKit initialization error: $e');
+    }
   }
 }

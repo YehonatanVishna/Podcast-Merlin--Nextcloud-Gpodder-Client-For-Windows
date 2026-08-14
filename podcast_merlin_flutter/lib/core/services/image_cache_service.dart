@@ -59,6 +59,8 @@ class ImageCacheService {
     return '$hash$extension';
   }
 
+  static final Map<String, Future<File?>> _inFlight = {};
+
   /// Checks if the image is already stored on persistent disk storage (0ms network lookup).
   static Future<File?> getCachedFile(String? url) async {
     if (kIsWeb) return null;
@@ -88,20 +90,66 @@ class ImageCacheService {
     final existing = await getCachedFile(cleanUrl);
     if (existing != null) return existing;
 
+    if (_inFlight.containsKey(cleanUrl)) {
+      return _inFlight[cleanUrl]!;
+    }
+
+    final future = _performDownloadAndCache(cleanUrl);
+    _inFlight[cleanUrl] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlight.remove(cleanUrl);
+    }
+  }
+
+  static Future<File?> _performDownloadAndCache(String cleanUrl) async {
+    final existing = await getCachedFile(cleanUrl);
+    if (existing != null) return existing;
+
+    File? tempFile;
     try {
       final dir = await _getCacheDir();
       final filename = _hashUrl(cleanUrl);
       final file = File(p.join(dir.path, filename));
-      final tempFile = File(p.join(dir.path, '$filename.tmp'));
+      if (await file.exists()) return file;
+
+      final tempFilename = '$filename.${DateTime.now().microsecondsSinceEpoch}.tmp';
+      tempFile = File(p.join(dir.path, tempFilename));
 
       await _dio.download(cleanUrl, tempFile.path);
       if (await tempFile.exists()) {
-        await tempFile.rename(file.path);
+        if (await file.exists()) {
+          try {
+            await tempFile.delete();
+          } catch (_) {}
+          return file;
+        }
+        try {
+          await tempFile.rename(file.path);
+        } catch (_) {
+          if (await file.exists()) {
+            try {
+              await tempFile.delete();
+            } catch (_) {}
+            return file;
+          }
+          await tempFile.copy(file.path);
+          try {
+            await tempFile.delete();
+          } catch (_) {}
+        }
         return file;
       }
     } catch (e) {
       if (kDebugMode) {
         print('ImageCacheService: Download failed for $cleanUrl: $e');
+      }
+    } finally {
+      if (tempFile != null && await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {}
       }
     }
     return null;

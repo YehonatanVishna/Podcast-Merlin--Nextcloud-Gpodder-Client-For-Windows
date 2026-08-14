@@ -6,9 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class SecureStorageService {
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const _secureStorage = FlutterSecureStorage();
 
   static const String keyServerUrl = 'nextcloud_server_url';
   static const String keyUsername = 'nextcloud_username';
@@ -21,10 +19,12 @@ class SecureStorageService {
   Future<void> write(String key, String value) async {
     try {
       await _secureStorage.write(key: key, value: value);
+      _memoryFallback[key] = value;
+      await _deleteFallback(key);
     } catch (e) {
       if (kDebugMode) print('SecureStorage write error, using fallback: $e');
+      await _writeFallback(key, value);
     }
-    await _writeFallback(key, value);
   }
 
   Future<String?> read(String key) async {
