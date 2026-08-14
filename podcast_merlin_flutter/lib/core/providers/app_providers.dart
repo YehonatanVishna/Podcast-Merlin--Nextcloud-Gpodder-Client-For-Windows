@@ -10,6 +10,8 @@ import '../../features/player/audio_player_service.dart';
 import '../../features/sync/gpodder_api_client.dart';
 import '../../features/sync/secure_storage_service.dart';
 import '../../features/sync/sync_service.dart';
+import '../../features/discovery/multisource_search_service.dart';
+import '../../features/discovery/discovery_notifier.dart';
 
 final databaseProvider = Provider<DatabaseHelper>((ref) => DatabaseHelper.instance);
 final secureStorageProvider = Provider<SecureStorageService>((ref) => SecureStorageService());
@@ -344,3 +346,13 @@ final episodesNotifierProvider = StateNotifierProvider.autoDispose
     podcastId,
   );
 });
+
+final multisourceSearchServiceProvider = Provider<MultisourceSearchService>((ref) {
+  return MultisourceSearchService();
+});
+
+final discoveryNotifierProvider =
+    StateNotifierProvider<DiscoveryNotifier, DiscoveryState>((ref) {
+  return DiscoveryNotifier(ref.watch(multisourceSearchServiceProvider));
+});
+

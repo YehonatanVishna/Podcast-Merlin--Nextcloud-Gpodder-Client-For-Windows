@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'podcast_catalog_view.dart';
 import 'episode_list_view.dart';
+import 'podcast_discovery_view.dart';
 import 'settings_view.dart';
 import '../widgets/player_dock.dart';
 import '../../../core/models/podcast.dart';
@@ -98,6 +99,7 @@ class MainShellState extends State<MainShell> {
             podcast: selectedPodcast,
             onBackPressed: _historyIndex > 0 ? () => goBack() : null,
           ),
+          const PodcastDiscoveryView(),
           const SettingsView(),
         ];
 
@@ -116,7 +118,7 @@ class MainShellState extends State<MainShell> {
                   ),
                   selectedIndex: selectedIndex,
                   onDestinationSelected: (index) {
-                    navigateTo(index, podcast: index == 0 ? null : (index == 1 ? selectedPodcast : null));
+                    navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
                   labelType: NavigationRailLabelType.selected,
                   destinations: const [
@@ -129,6 +131,11 @@ class MainShellState extends State<MainShell> {
                       icon: Icon(Icons.playlist_play_outlined),
                       selectedIcon: Icon(Icons.playlist_play),
                       label: Text('Episodes'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.explore_outlined),
+                      selectedIcon: Icon(Icons.explore),
+                      label: Text('Discover'),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),
@@ -156,8 +163,9 @@ class MainShellState extends State<MainShell> {
           bottomNavigationBar: !isDesktop
               ? BottomNavigationBar(
                   currentIndex: selectedIndex,
+                  type: BottomNavigationBarType.fixed,
                   onTap: (index) {
-                    navigateTo(index, podcast: index == 0 ? null : (index == 1 ? selectedPodcast : null));
+                    navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
                   items: const [
                     BottomNavigationBarItem(
@@ -167,6 +175,10 @@ class MainShellState extends State<MainShell> {
                     BottomNavigationBarItem(
                       icon: Icon(Icons.playlist_play),
                       label: 'Episodes',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.explore),
+                      label: 'Discover',
                     ),
                     BottomNavigationBarItem(
                       icon: Icon(Icons.settings),
