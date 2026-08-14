@@ -5,6 +5,7 @@ enum SyncStage {
   fetchingSubscriptions,
   fetchingEpisodeActions,
   fetchingFeed,
+  offlineMode,
   completed,
   error,
 }

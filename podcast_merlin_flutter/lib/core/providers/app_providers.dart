@@ -74,6 +74,10 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
     }
   }
 
+  Future<bool> pushBacklog() async {
+    return _sync.pushPendingBacklog();
+  }
+
   Future<Podcast?> fetchAndSaveFeed(String rssUrl) async {
     state = SyncStatusState(
       isSyncing: true,
@@ -153,9 +157,11 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
   }
 
   Future<bool> addPodcastFeed(String rssUrl) async {
+    await _db.queueSubscriptionChange('add', rssUrl);
     final saved = await _syncStatusNotifier.fetchAndSaveFeed(rssUrl);
     if (saved != null) {
       await loadPodcasts();
+      _syncStatusNotifier.pushBacklog().catchError((_) => false);
       return true;
     }
     return false;
@@ -163,8 +169,10 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
 
   Future<void> removePodcast(String rssUrl) async {
     try {
+      await _db.queueSubscriptionChange('remove', rssUrl);
       await _db.deletePodcastByUrl(rssUrl);
       await loadPodcasts();
+      _syncStatusNotifier.pushBacklog().catchError((_) => false);
     } catch (e, st) {
       if (mounted) {
         state = AsyncValue.error('Failed to unsubscribe podcast: ${AppErrorFormatter.format(e)}', st);

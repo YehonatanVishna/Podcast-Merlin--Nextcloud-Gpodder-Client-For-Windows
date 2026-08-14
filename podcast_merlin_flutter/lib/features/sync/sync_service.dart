@@ -28,7 +28,7 @@ class SyncService {
         _db = db ?? DatabaseHelper.instance,
         _rssParser = rssParser ?? RssFeedParser();
 
-  /// Full synchronization workflow (Pull remote changes, push pending actions, refresh RSS)
+  /// Full synchronization workflow (Ping server first; if online -> push backlog & pull changes; if offline -> parse existing subscriptions directly)
   Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
     lastError = null;
     lastFeedWarnings = [];
@@ -44,12 +44,27 @@ class SyncService {
       return false;
     }
 
+    onProgress?.call(SyncStage.connectingGpodder, 'Pinging gPodder service...');
+    final isOnline = await _apiClient.pingServer(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+    );
+
+    if (!isOnline) {
+      // Offline fallback mode: proceed directly to parse existing local subscriptions via RSS
+      onProgress?.call(SyncStage.fetchingFeed, 'gPodder server offline. Refreshing local subscriptions...');
+      await _refreshLocalPodcastsDirectly(onProgress);
+      return true;
+    }
+
     try {
-      // 1. Push pending local actions first (with collapsing)
-      onProgress?.call(SyncStage.pushingActions, 'Pushing local actions to gPodder...');
+      // 1. Push pending subscription backlog & pending play actions
+      onProgress?.call(SyncStage.pushingActions, 'Pushing local backlog to gPodder...');
+      await _pushPendingSubscriptionChanges(serverUrl!, username!, password!);
       final pushedOk = await _pushPendingActions(serverUrl, username, password);
       if (!pushedOk) {
-        lastError ??= 'Failed to push offline playback actions to gPodder server.';
+        lastFeedWarnings.add('Failed to push offline playback actions to gPodder server.');
       }
 
       // 2. Fetch remote subscription changes
@@ -78,65 +93,65 @@ class SyncService {
       final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
       final removeList = (subResponse['remove'] as List?)?.cast<String>() ?? [];
 
-        // 2a. Handle podcast removals
-        for (final rssUrl in removeList) {
+      // 2a. Handle podcast removals
+      for (final rssUrl in removeList) {
+        try {
+          await _db.deletePodcastByUrl(rssUrl);
+        } catch (e) {
+          lastFeedWarnings.add('Failed to remove $rssUrl: ${AppErrorFormatter.format(e)}');
+        }
+      }
+
+      // 2b. Add new remote subscriptions
+      for (final rssUrl in addList) {
+        final existing = await _db.getPodcastByRssUrl(rssUrl);
+        if (existing == null || existing.isDead) {
+          onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
           try {
-            await _db.deletePodcastByUrl(rssUrl);
+            await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
           } catch (e) {
-            lastFeedWarnings.add('Failed to remove $rssUrl: ${AppErrorFormatter.format(e)}');
+            final errStr = AppErrorFormatter.format(e);
+            final fullErr = '$rssUrl: $errStr';
+            lastFeedWarnings.add(fullErr);
+
+            // Store a dead podcast stub in local database so it is saved in subs
+            // and future sync cycles do not continuously block timestamp updates
+            final stubTitle = _extractTitleFromUrl(rssUrl);
+            final deadPod = Podcast(
+              rssUrl: rssUrl,
+              title: stubTitle,
+              imageUrl: '',
+              description: 'Feed unavailable ($errStr)',
+              link: rssUrl,
+              lastUpdated: DateTime.now(),
+              isDead: true,
+              lastFeedError: errStr,
+              feedErrorCount: 1,
+            );
+            await _db.insertOrUpdatePodcast(deadPod);
           }
         }
+      }
 
-        // 2b. Add new remote subscriptions
-        for (final rssUrl in addList) {
-          final existing = await _db.getPodcastByRssUrl(rssUrl);
-          if (existing == null || existing.isDead) {
-            onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
-            try {
-              await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
-            } catch (e) {
-              final errStr = AppErrorFormatter.format(e);
-              final fullErr = '$rssUrl: $errStr';
-              lastFeedWarnings.add(fullErr);
-
-              // Store a dead podcast stub in local database so it is saved in subs
-              // and future sync cycles do not continuously block timestamp updates
-              final stubTitle = _extractTitleFromUrl(rssUrl);
-              final deadPod = Podcast(
-                rssUrl: rssUrl,
-                title: stubTitle,
-                imageUrl: '',
-                description: 'Feed unavailable ($errStr)',
-                link: rssUrl,
-                lastUpdated: DateTime.now(),
-                isDead: true,
-                lastFeedError: errStr,
-                feedErrorCount: 1,
-              );
-              await _db.insertOrUpdatePodcast(deadPod);
-            }
+      // 2c. Refresh existing local podcasts not included in add/remove delta
+      for (final pod in localPodcasts) {
+        if (!removeList.contains(pod.rssUrl) && !addList.contains(pod.rssUrl)) {
+          onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast: ${pod.title}');
+          try {
+            await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
+            await _db.markPodcastHealthy(pod.rssUrl);
+          } catch (e) {
+            final errStr = AppErrorFormatter.format(e);
+            final fullErr = '${pod.title} (${pod.rssUrl}): $errStr';
+            lastFeedWarnings.add(fullErr);
+            await _db.markPodcastDead(pod.rssUrl, errStr);
           }
         }
+      }
 
-        // 2c. Refresh existing local podcasts not included in add/remove delta
-        for (final pod in localPodcasts) {
-          if (!removeList.contains(pod.rssUrl) && !addList.contains(pod.rssUrl)) {
-            onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast: ${pod.title}');
-            try {
-              await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
-              await _db.markPodcastHealthy(pod.rssUrl);
-            } catch (e) {
-              final errStr = AppErrorFormatter.format(e);
-              final fullErr = '${pod.title} (${pod.rssUrl}): $errStr';
-              lastFeedWarnings.add(fullErr);
-              await _db.markPodcastDead(pod.rssUrl, errStr);
-            }
-          }
-        }
-
-        if (subResponse['timestamp'] != null) {
-          newTimestampToSave = (subResponse['timestamp'] as num).toInt();
-        }
+      if (subResponse['timestamp'] != null) {
+        newTimestampToSave = (subResponse['timestamp'] as num).toInt();
+      }
 
       // 3. Fetch remote episode actions
       onProgress?.call(SyncStage.fetchingEpisodeActions, 'Syncing episode playback with gPodder...');
@@ -159,7 +174,7 @@ class SyncService {
         }
       }
 
-      // 4. Save new timestamp (dead feeds are recorded in subs as dead podcasts so sync timestamp can advance safely)
+      // 4. Save new timestamp
       if (newTimestampToSave != null && newTimestampToSave > 0) {
         await _storage.write(
           SecureStorageService.keyLastActionTimestamp,
@@ -170,8 +185,81 @@ class SyncService {
       return true;
     } catch (e) {
       lastError = AppErrorFormatter.format(e);
+      await _refreshLocalPodcastsDirectly(onProgress);
+      return true;
+    }
+  }
+
+  /// Refreshes all locally stored podcasts directly via RSS feeds
+  Future<void> _refreshLocalPodcastsDirectly(SyncProgressCallback? onProgress) async {
+    final localPodcasts = await _db.getAllPodcasts();
+    if (localPodcasts.isEmpty) {
+      lastFeedWarnings.add('gPodder server is offline and no local podcasts are stored.');
+      return;
+    }
+
+    lastFeedWarnings.add('gPodder server is offline. Refreshed ${localPodcasts.length} local subscription feeds directly via RSS.');
+
+    for (final pod in localPodcasts) {
+      onProgress?.call(SyncStage.fetchingFeed, 'Refreshing local feed: ${pod.title}');
+      try {
+        await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
+        await _db.markPodcastHealthy(pod.rssUrl);
+      } catch (e) {
+        final errStr = AppErrorFormatter.format(e);
+        lastFeedWarnings.add('${pod.title} (${pod.rssUrl}): $errStr');
+        await _db.markPodcastDead(pod.rssUrl, errStr);
+      }
+    }
+  }
+
+  /// Push both pending subscription changes and pending playback actions to gPodder
+  Future<bool> pushPendingBacklog() async {
+    final serverUrl = await _storage.read(SecureStorageService.keyServerUrl);
+    final username = await _storage.read(SecureStorageService.keyUsername);
+    final password = await _storage.read(SecureStorageService.keyPassword);
+
+    if (serverUrl == null || username == null || password == null ||
+        serverUrl.isEmpty || username.isEmpty || password.isEmpty) {
       return false;
     }
+
+    final isOnline = await _apiClient.pingServer(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+    );
+
+    if (!isOnline) {
+      return false;
+    }
+
+    final subOk = await _pushPendingSubscriptionChanges(serverUrl, username, password);
+    final actionOk = await _pushPendingActions(serverUrl, username, password);
+    return subOk && actionOk;
+  }
+
+  /// Push enqueued subscription add/remove backlog to gPodder server
+  Future<bool> _pushPendingSubscriptionChanges(String serverUrl, String username, String password) async {
+    final pendingMap = await _db.getPendingSubscriptionChanges();
+    final addList = (pendingMap['add'] as List?)?.cast<String>() ?? [];
+    final removeList = (pendingMap['remove'] as List?)?.cast<String>() ?? [];
+    final maxId = (pendingMap['maxId'] as num?)?.toInt() ?? 0;
+
+    if (addList.isEmpty && removeList.isEmpty) return true;
+
+    final success = await _apiClient.uploadSubscriptionChanges(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+      addUrls: addList,
+      removeUrls: removeList,
+    );
+
+    if (success && maxId > 0) {
+      await _db.clearSubscriptionChangesUpTo(maxId);
+    }
+    return success;
   }
 
   /// Push any pending actions to gPodder server asynchronously
@@ -180,8 +268,8 @@ class SyncService {
     final username = await _storage.read(SecureStorageService.keyUsername);
     final password = await _storage.read(SecureStorageService.keyPassword);
 
-    if (serverUrl == null || username == null || password == null) {
-      lastError = 'Server credentials not configured.';
+    if (serverUrl == null || username == null || password == null ||
+        serverUrl.isEmpty || username.isEmpty || password.isEmpty) {
       return false;
     }
 

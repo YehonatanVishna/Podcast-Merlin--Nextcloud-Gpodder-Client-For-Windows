@@ -11,8 +11,29 @@ import 'package:podcast_merlin_flutter/features/sync/sync_service.dart';
 
 class TestGPodderApiClient extends GPodderApiClient {
   bool shouldSucceed = true;
+  bool pingShouldSucceed = true;
   Map<String, dynamic>? mockSubscriptionResponse;
   List<GPodderAction> mockEpisodeActions = [];
+
+  @override
+  Future<bool> pingServer({
+    required String serverUrl,
+    required String username,
+    required String password,
+  }) async {
+    return pingShouldSucceed;
+  }
+
+  @override
+  Future<bool> uploadSubscriptionChanges({
+    required String serverUrl,
+    required String username,
+    required String password,
+    required List<String> addUrls,
+    required List<String> removeUrls,
+  }) async {
+    return shouldSucceed;
+  }
 
   @override
   Future<bool> uploadEpisodeActions({

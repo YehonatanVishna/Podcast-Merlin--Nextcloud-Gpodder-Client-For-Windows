@@ -90,6 +90,17 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE podcasts ADD COLUMN feedErrorCount INTEGER DEFAULT 0;');
         } catch (_) {}
       }
+
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS subscription_backlog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            rssUrl TEXT NOT NULL,
+            timestamp TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
     } catch (_) {}
   }
 
@@ -168,6 +179,15 @@ class DatabaseHelper {
         podcastUrl TEXT,
         episodeUrl TEXT,
         totalDuration INTEGER
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS subscription_backlog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        rssUrl TEXT NOT NULL,
+        timestamp TEXT NOT NULL
       )
     ''');
   }
@@ -423,7 +443,7 @@ class DatabaseHelper {
   Future<int> updateEpisodePlaybackState(String mediaUrl, int position, {bool isPlayed = false}) async =>
       updateEpisodeProgress(mediaUrl, position, isPlayed);
 
-  // GPODDER OFFLINE ACTION QUEUE
+  // GPODDER OFFLINE ACTION QUEUE & BACKLOG
 
   Future<int> queueGPodderAction(GPodderAction action) async {
     final db = await instance.database;
@@ -446,6 +466,28 @@ class DatabaseHelper {
     }
     if (cols.contains('totalDuration')) {
       adapted['totalDuration'] = action.total;
+    }
+
+    if (action.action == 'play') {
+      final podcastCol = cols.contains('podcast') ? 'podcast' : 'podcastUrl';
+      final episodeCol = cols.contains('episode') ? 'episode' : 'episodeUrl';
+
+      final existing = await db.query(
+        'gpodder_actions',
+        where: '$podcastCol = ? AND $episodeCol = ? AND action = ?',
+        whereArgs: [action.podcast, action.episode, 'play'],
+      );
+
+      if (existing.isNotEmpty) {
+        final existingId = (existing.first['id'] as num).toInt();
+        await db.update(
+          'gpodder_actions',
+          adapted,
+          where: 'id = ?',
+          whereArgs: [existingId],
+        );
+        return existingId;
+      }
     }
 
     return db.insert('gpodder_actions', adapted);
@@ -509,5 +551,98 @@ class DatabaseHelper {
       return clearQueuedGPodderActionsUpTo(maxId);
     }
     return 0;
+  }
+
+  // SUBSCRIPTION OFFLINE BACKLOG & DEDUPLICATION
+
+  /// Enqueue subscription change ('add' or 'remove') with smart cancel-out logic.
+  /// If opposing action exists (e.g. 'add' followed by 'remove' or vice versa for same rssUrl),
+  /// both actions cancel out to 0 pending network requests!
+  Future<void> queueSubscriptionChange(String action, String rssUrl) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+
+    final pending = await db.query(
+      'subscription_backlog',
+      where: 'rssUrl = ?',
+      whereArgs: [rssUrl],
+    );
+
+    if (pending.isNotEmpty) {
+      final existingAction = pending.first['action'] as String;
+      final existingId = (pending.first['id'] as num).toInt();
+
+      if ((existingAction == 'add' && action == 'remove') ||
+          (existingAction == 'remove' && action == 'add')) {
+        // Opposing action: cancel out both! Delete existing entry and skip inserting new one.
+        await db.delete(
+          'subscription_backlog',
+          where: 'id = ?',
+          whereArgs: [existingId],
+        );
+        return;
+      } else if (existingAction == action) {
+        // Duplicate action: update timestamp
+        await db.update(
+          'subscription_backlog',
+          {'timestamp': DateTime.now().toIso8601String()},
+          where: 'id = ?',
+          whereArgs: [existingId],
+        );
+        return;
+      }
+    }
+
+    await db.insert('subscription_backlog', {
+      'action': action,
+      'rssUrl': rssUrl,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+  }
+
+  /// Get deduplicated subscription changes to push to gPodder
+  Future<Map<String, dynamic>> getPendingSubscriptionChanges() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+
+    final maps = await db.query('subscription_backlog', orderBy: 'id ASC');
+    if (maps.isEmpty) {
+      return {'add': <String>[], 'remove': <String>[], 'maxId': 0};
+    }
+
+    final addSet = <String>{};
+    final removeSet = <String>{};
+    int maxId = 0;
+
+    for (final map in maps) {
+      final id = (map['id'] as num).toInt();
+      if (id > maxId) maxId = id;
+      final action = map['action'] as String;
+      final rssUrl = map['rssUrl'] as String;
+
+      if (action == 'add') {
+        removeSet.remove(rssUrl);
+        addSet.add(rssUrl);
+      } else if (action == 'remove') {
+        addSet.remove(rssUrl);
+        removeSet.add(rssUrl);
+      }
+    }
+
+    return {
+      'add': addSet.toList(),
+      'remove': removeSet.toList(),
+      'maxId': maxId,
+    };
+  }
+
+  /// Clear subscription backlog items up to maxId
+  Future<int> clearSubscriptionChangesUpTo(int maxId) async {
+    final db = await instance.database;
+    return db.delete(
+      'subscription_backlog',
+      where: 'id <= ?',
+      whereArgs: [maxId],
+    );
   }
 }

@@ -78,6 +78,38 @@ class GPodderApiClient {
     return urls;
   }
 
+  /// Fast connectivity ping check prior to any server HTTP request
+  Future<bool> pingServer({
+    required String serverUrl,
+    required String username,
+    required String password,
+  }) async {
+    if (serverUrl.trim().isEmpty || username.trim().isEmpty || password.trim().isEmpty) {
+      lastError = 'Server credentials not configured.';
+      return false;
+    }
+    try {
+      final baseUrl = _formatBaseUrl(serverUrl);
+      final response = await _dio.get(
+        '$baseUrl/subscriptions?since=2147483647',
+        options: _getAuthOptions(username, password).copyWith(
+          sendTimeout: const Duration(seconds: 4),
+          receiveTimeout: const Duration(seconds: 4),
+        ),
+      );
+      if (response.statusCode == 200) {
+        lastError = null;
+        return true;
+      }
+      lastError = 'gPodder server ping returned HTTP status ${response.statusCode}';
+      return false;
+    } catch (e) {
+      if (kDebugMode) print('pingServer error: $e');
+      lastError = AppErrorFormatter.format(e);
+      return false;
+    }
+  }
+
   /// Check connectivity & credentials against Nextcloud gPodder server, returning detailed error or null if success
   Future<String?> testConnectionDetailed({
     required String serverUrl,
@@ -90,26 +122,8 @@ class GPodderApiClient {
     if (username.trim().isEmpty || password.trim().isEmpty) {
       return 'Username and password cannot be empty.';
     }
-
-    try {
-      final baseUrl = _formatBaseUrl(serverUrl);
-      final response = await _dio.get(
-        '$baseUrl/subscriptions?since=2147483647',
-        options: _getAuthOptions(username, password),
-      );
-      if (response.statusCode == 200) {
-        lastError = null;
-        return null; // Connection success
-      }
-      final err = 'Server returned HTTP status code ${response.statusCode}';
-      lastError = err;
-      return err;
-    } catch (e) {
-      if (kDebugMode) print('testConnectionDetailed error: $e');
-      final err = AppErrorFormatter.format(e);
-      lastError = err;
-      return err;
-    }
+    final ok = await pingServer(serverUrl: serverUrl, username: username, password: password);
+    return ok ? null : (lastError ?? 'Connection failed');
   }
 
   /// Check connectivity & credentials against Nextcloud gPodder server
@@ -118,12 +132,11 @@ class GPodderApiClient {
     required String username,
     required String password,
   }) async {
-    final error = await testConnectionDetailed(
+    return pingServer(
       serverUrl: serverUrl,
       username: username,
       password: password,
     );
-    return error == null;
   }
 
   /// Get subscriptions diff from server
@@ -133,6 +146,11 @@ class GPodderApiClient {
     required String password,
     int sinceTimestamp = 0,
   }) async {
+    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
+    if (!isOnline) {
+      return null;
+    }
+
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final response = await _dio.get(
@@ -197,6 +215,13 @@ class GPodderApiClient {
     required List<String> addUrls,
     required List<String> removeUrls,
   }) async {
+    if (addUrls.isEmpty && removeUrls.isEmpty) return true;
+
+    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
+    if (!isOnline) {
+      return false;
+    }
+
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final payload = {
@@ -228,6 +253,11 @@ class GPodderApiClient {
     required String password,
     int sinceTimestamp = 0,
   }) async {
+    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
+    if (!isOnline) {
+      return [];
+    }
+
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final response = await _dio.get(
@@ -272,6 +302,12 @@ class GPodderApiClient {
     required List<GPodderAction> actions,
   }) async {
     if (actions.isEmpty) return true;
+
+    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
+    if (!isOnline) {
+      return false;
+    }
+
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final payload = actions.map((a) => a.toApiJson()).toList();
