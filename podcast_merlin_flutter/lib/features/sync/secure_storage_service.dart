@@ -50,6 +50,7 @@ class SecureStorageService {
   static final Map<String, String> _memoryFallback = {};
 
   Future<File?> get _fallbackFile async {
+    if (kIsWeb) return null;
     try {
       final appDir = await getApplicationSupportDirectory();
       final file = File(p.join(appDir.path, '.merlin_auth_store'));

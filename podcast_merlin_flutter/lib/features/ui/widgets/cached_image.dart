@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/services/image_cache_service.dart';
 
@@ -57,6 +58,16 @@ class _AppCachedImageState extends State<AppCachedImage> {
       return;
     }
 
+    if (kIsWeb) {
+      if (mounted) {
+        setState(() {
+          _localFile = null;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
     // 1. Check local persistent disk storage FIRST (Instant 0ms lookup)
     final existingFile = await ImageCacheService.getCachedFile(cleanUrl);
     if (existingFile != null && mounted) {
@@ -97,8 +108,39 @@ class _AppCachedImageState extends State<AppCachedImage> {
           ),
         );
 
+    final cleanUrl = widget.imageUrl.trim();
+    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+      return widget.borderRadius != null
+          ? ClipRRect(borderRadius: widget.borderRadius!, child: fallback)
+          : fallback;
+    }
+
     Widget content;
-    if (_localFile != null) {
+    if (kIsWeb) {
+      content = Image.network(
+        cleanUrl,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return widget.placeholder ??
+              Container(
+                width: widget.width,
+                height: widget.height,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2.0),
+                  ),
+                ),
+              );
+        },
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    } else if (_localFile != null) {
       content = Image.file(
         _localFile!,
         width: widget.width,
@@ -121,7 +163,13 @@ class _AppCachedImageState extends State<AppCachedImage> {
             ),
           );
     } else {
-      content = fallback;
+      content = Image.network(
+        cleanUrl,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
     }
 
     if (widget.borderRadius != null) {

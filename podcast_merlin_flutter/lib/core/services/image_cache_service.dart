@@ -61,6 +61,7 @@ class ImageCacheService {
 
   /// Checks if the image is already stored on persistent disk storage (0ms network lookup).
   static Future<File?> getCachedFile(String? url) async {
+    if (kIsWeb) return null;
     if (url == null || url.trim().isEmpty) return null;
     try {
       final dir = await _getCacheDir();
@@ -79,6 +80,7 @@ class ImageCacheService {
 
   /// Downloads image via Dio with timeout and saves directly to persistent disk storage.
   static Future<File?> downloadAndCache(String? url) async {
+    if (kIsWeb) return null;
     if (url == null || url.trim().isEmpty) return null;
     final cleanUrl = url.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) return null;
@@ -107,11 +109,13 @@ class ImageCacheService {
 
   /// Pre-fetches a single image URL into local persistent disk storage.
   static Future<void> precacheImageUrl(String? url) async {
+    if (kIsWeb) return;
     await downloadAndCache(url);
   }
 
   /// Batch pre-caches a collection of image URLs concurrently in background.
   static Future<void> precacheBatch(Iterable<String?> urls) async {
+    if (kIsWeb) return;
     final validUrls = urls
         .whereType<String>()
         .map((u) => u.trim())
@@ -130,6 +134,7 @@ class ImageCacheService {
 
   /// Retrieves local cached file path for an image URL if available on disk.
   static Future<String?> getCachedFilePath(String? url) async {
+    if (kIsWeb) return null;
     final file = await getCachedFile(url);
     return file?.path;
   }
