@@ -38,8 +38,8 @@ void main() async {
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.podcastmerlin.audio',
       androidNotificationChannelName: 'Podcast Merlin Playback',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      androidNotificationOngoing: false,
+      androidStopForegroundOnPause: false,
       androidNotificationClickStartsActivity: true,
       androidNotificationIcon: 'drawable/ic_stat_podcast',
       androidShowNotificationBadge: true,
