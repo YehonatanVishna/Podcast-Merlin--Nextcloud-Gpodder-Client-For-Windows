@@ -15,7 +15,7 @@ class DiscoveryState {
     this.isLoading = false,
     this.error,
     this.currentQuery = '',
-    this.activeProviderId = 'podcast_index',
+    this.activeProviderId = 'itunes',
     this.isTrending = true,
   });
 

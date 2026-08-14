@@ -1,6 +1,5 @@
 import '../../core/models/search_result_podcast.dart';
 import 'itunes_provider.dart';
-import 'podcast_index_provider.dart';
 import 'podcast_search_provider.dart';
 
 class MultisourceSearchService {
@@ -12,7 +11,6 @@ class MultisourceSearchService {
   }) {
     // Register default providers
     registerProvider(ITunesSearchProvider());
-    registerProvider(PodcastIndexProvider());
 
     if (initialProvider != null) {
       registerProvider(initialProvider);

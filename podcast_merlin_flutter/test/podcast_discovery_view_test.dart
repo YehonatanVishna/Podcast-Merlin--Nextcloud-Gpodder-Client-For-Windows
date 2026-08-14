@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:podcast_merlin_flutter/core/models/podcast.dart';
 import 'package:podcast_merlin_flutter/core/models/search_result_podcast.dart';
 import 'package:podcast_merlin_flutter/core/providers/app_providers.dart';
 import 'package:podcast_merlin_flutter/features/discovery/multisource_search_service.dart';
@@ -12,10 +11,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class TestSearchProvider implements PodcastSearchProvider {
   @override
-  String get id => 'podcast_index';
+  String get id => 'itunes';
 
   @override
-  String get displayName => 'Podcast Index';
+  String get displayName => 'iTunes';
 
   @override
   bool get requiresCredentials => false;
@@ -33,7 +32,7 @@ class TestSearchProvider implements PodcastSearchProvider {
         imageUrl: '',
         description: 'Popular tech show',
         websiteUrl: 'https://example.com',
-        providerId: 'podcast_index',
+        providerId: 'itunes',
       ),
     ];
   }
@@ -48,7 +47,7 @@ class TestSearchProvider implements PodcastSearchProvider {
         imageUrl: '',
         description: 'Searched description',
         websiteUrl: 'https://example.com',
-        providerId: 'podcast_index',
+        providerId: 'itunes',
       ),
     ];
   }
@@ -70,7 +69,7 @@ void main() {
       await audioHandler.stop();
     });
 
-    testWidgets('renders search bar, source selector dropdown, and trending list', (tester) async {
+    testWidgets('renders search bar and trending list', (tester) async {
       final mockService = MultisourceSearchService(initialProvider: TestSearchProvider());
 
       await tester.pumpWidget(
@@ -90,7 +89,6 @@ void main() {
 
       expect(find.text('Discover Podcasts'), findsOneWidget);
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.text('Podcast Index'), findsOneWidget);
       expect(find.text('🔥 Trending Podcasts'), findsOneWidget);
       expect(find.text('Trending Merlin Show'), findsOneWidget);
     });

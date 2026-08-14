@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:podcast_merlin_flutter/core/database/database_helper.dart';
 import 'package:podcast_merlin_flutter/core/models/podcast.dart';
 import 'package:podcast_merlin_flutter/core/models/search_result_podcast.dart';
-import 'package:podcast_merlin_flutter/core/models/sync_status.dart';
 import 'package:podcast_merlin_flutter/core/providers/app_providers.dart';
 import 'package:podcast_merlin_flutter/features/discovery/multisource_search_service.dart';
 import 'package:podcast_merlin_flutter/features/discovery/podcast_search_provider.dart';
@@ -53,10 +52,10 @@ class TestPodcastsNotifier extends PodcastsNotifier {
 
 class MockE2ESearchProvider implements PodcastSearchProvider {
   @override
-  String get id => 'podcast_index';
+  String get id => 'itunes';
 
   @override
-  String get displayName => 'Podcast Index';
+  String get displayName => 'iTunes';
 
   @override
   bool get requiresCredentials => false;
@@ -72,9 +71,9 @@ class MockE2ESearchProvider implements PodcastSearchProvider {
         author: 'E2E Author',
         rssUrl: 'https://example.com/e2e_feed.xml',
         imageUrl: '',
-        description: 'Discovered via Podcast Index',
+        description: 'Discovered via iTunes',
         websiteUrl: 'https://example.com',
-        providerId: 'podcast_index',
+        providerId: 'itunes',
       ),
     ];
   }

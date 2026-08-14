@@ -219,21 +219,23 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: discoveryState.activeProviderId,
-                  onChanged: (newId) {
-                    if (newId != null) {
-                      ref.read(discoveryNotifierProvider.notifier).setActiveProvider(newId);
-                    }
-                  },
-                  items: searchService.availableProviders.map((p) {
-                    return DropdownMenuItem<String>(
-                      value: p.id,
-                      child: Text(p.displayName),
-                    );
-                  }).toList(),
-                ),
+                if (searchService.availableProviders.length > 1) ...[
+                  const SizedBox(width: 12),
+                  DropdownButton<String>(
+                    value: discoveryState.activeProviderId,
+                    onChanged: (newId) {
+                      if (newId != null) {
+                        ref.read(discoveryNotifierProvider.notifier).setActiveProvider(newId);
+                      }
+                    },
+                    items: searchService.availableProviders.map((p) {
+                      return DropdownMenuItem<String>(
+                        value: p.id,
+                        child: Text(p.displayName),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -276,7 +278,6 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
     }
 
     if (discoveryState.error != null) {
-      final isPodcastIndex = discoveryState.activeProviderId == 'podcast_index';
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -291,43 +292,16 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.podcasts),
-                    label: const Text('Switch to Apple Podcasts (No Key Needed)'),
-                    onPressed: () {
-                      ref.read(discoveryNotifierProvider.notifier).setActiveProvider('itunes');
-                    },
-                  ),
-                  if (isPodcastIndex)
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.settings),
-                      label: const Text('Configure Podcast Index Keys'),
-                      onPressed: () {
-                        // Open Settings dialog or notify user to go to Settings
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Go to Settings tab to enter your Podcast Index API Key & Secret.'),
-                            duration: Duration(seconds: 4),
-                          ),
-                        );
-                      },
-                    ),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (discoveryState.currentQuery.isNotEmpty) {
-                        ref.read(discoveryNotifierProvider.notifier).search(discoveryState.currentQuery);
-                      } else {
-                        ref.read(discoveryNotifierProvider.notifier).loadTrending();
-                      }
-                    },
-                    child: const Text('Try Again'),
-                  ),
-                ],
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Again'),
+                onPressed: () {
+                  if (discoveryState.currentQuery.isNotEmpty) {
+                    ref.read(discoveryNotifierProvider.notifier).search(discoveryState.currentQuery);
+                  } else {
+                    ref.read(discoveryNotifierProvider.notifier).loadTrending();
+                  }
+                },
               ),
             ],
           ),

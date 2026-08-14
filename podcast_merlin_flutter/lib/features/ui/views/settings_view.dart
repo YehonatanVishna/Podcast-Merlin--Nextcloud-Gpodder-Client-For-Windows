@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../sync/secure_storage_service.dart';
 import '../widgets/sync_error_banner.dart';
@@ -17,9 +16,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   final _serverController = TextEditingController();
   final _userController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  final _podcastIndexKeyController = TextEditingController();
-  final _podcastIndexSecretController = TextEditingController();
 
   bool _isLoading = true;
   bool _isTesting = false;
@@ -38,9 +34,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     _userController.text = await storage.read(SecureStorageService.keyUsername) ?? '';
     _passwordController.text = await storage.read(SecureStorageService.keyPassword) ?? '';
 
-    _podcastIndexKeyController.text = await storage.read(SecureStorageService.keyPodcastIndexApiKey) ?? '';
-    _podcastIndexSecretController.text = await storage.read(SecureStorageService.keyPodcastIndexApiSecret) ?? '';
-
     setState(() {
       _isLoading = false;
     });
@@ -51,9 +44,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     await storage.write(SecureStorageService.keyServerUrl, _serverController.text.trim());
     await storage.write(SecureStorageService.keyUsername, _userController.text.trim());
     await storage.write(SecureStorageService.keyPassword, _passwordController.text.trim());
-
-    await storage.write(SecureStorageService.keyPodcastIndexApiKey, _podcastIndexKeyController.text.trim());
-    await storage.write(SecureStorageService.keyPodcastIndexApiSecret, _podcastIndexSecretController.text.trim());
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -285,53 +275,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 32),
-                const Divider(),
-                const SizedBox(height: 16),
-                const Text(
-                  'Podcast Index API (Optional Custom Credentials)',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Podcast Index search works automatically out of the box using built-in application credentials. If you prefer to use your own personal API Key and Secret, enter them below.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _podcastIndexKeyController,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key (Optional)',
-                    hintText: 'Leave empty for default app key',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.key),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _podcastIndexSecretController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'API Secret (Optional)',
-                    hintText: 'Leave empty for default app secret',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.security),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.open_in_new, size: 16),
-                    label: const Text('Get a free API Key at api.podcastindex.org'),
-                    onPressed: () async {
-                      final uri = Uri.parse('https://api.podcastindex.org/');
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri);
-                      }
-                    },
-                  ),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
