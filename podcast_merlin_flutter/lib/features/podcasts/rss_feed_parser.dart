@@ -1,8 +1,21 @@
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:xml/xml.dart';
 import '../../core/models/episode.dart';
 import '../../core/utils/error_formatter.dart';
 import '../../core/utils/html_purifier.dart';
+
+class _XmlParseArgs {
+  final String xmlString;
+  final String rssUrl;
+
+  _XmlParseArgs(this.xmlString, this.rssUrl);
+}
+
+RssFeedResult _parseXmlInBackground(_XmlParseArgs args) {
+  final parser = RssFeedParser();
+  return parser.parseFeedXml(args.xmlString, args.rssUrl);
+}
 
 class RssParseException implements Exception {
   final String message;
@@ -56,7 +69,7 @@ class RssFeedParser {
     try {
       final response = await _dio.get<String>(trimmedUrl);
       if (response.statusCode == 200 && response.data != null && response.data!.isNotEmpty) {
-        return parseFeedXml(response.data!, trimmedUrl);
+        return await compute(_parseXmlInBackground, _XmlParseArgs(response.data!, trimmedUrl));
       } else {
         throw RssParseException('Failed to fetch feed: HTTP ${response.statusCode}');
       }
@@ -64,6 +77,10 @@ class RssFeedParser {
       if (e is RssParseException) rethrow;
       throw RssParseException('Feed download error: ${AppErrorFormatter.format(e)}');
     }
+  }
+
+  Future<RssFeedResult> parseFeedXmlAsync(String xmlString, String rssUrl) async {
+    return await compute(_parseXmlInBackground, _XmlParseArgs(xmlString, rssUrl));
   }
 
   RssFeedResult parseFeedXml(String xmlString, String rssUrl) {

@@ -35,8 +35,13 @@ class DatabaseHelper {
   String _isPlayedCol = 'isPlayed';
   String _mediaUrlCol = 'mediaUrl';
   String _podcastRssUrlCol = 'rssUrl';
+  bool _columnsDetected = false;
+  Completer<void>? _detectCompleter;
 
   Future<void> _detectColumnNames(Database db) async {
+    if (_columnsDetected) return;
+    if (_detectCompleter != null) return _detectCompleter!.future;
+    _detectCompleter = Completer<void>();
     try {
       final episodeInfo = await db.rawQuery('PRAGMA table_info(episodes)');
       final epCols = episodeInfo.map((row) => row['name'].toString()).toSet();
@@ -101,7 +106,13 @@ class DatabaseHelper {
           )
         ''');
       } catch (_) {}
-    } catch (_) {}
+
+      _columnsDetected = true;
+      _detectCompleter!.complete();
+    } catch (e, stack) {
+      _detectCompleter!.completeError(e, stack);
+      _detectCompleter = null;
+    }
   }
 
   Future<Database> _initDB(String filePath) async {

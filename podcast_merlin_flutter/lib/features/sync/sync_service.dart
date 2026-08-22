@@ -102,51 +102,86 @@ class SyncService {
         }
       }
 
-      // 2b. Add new remote subscriptions
+      // 2b. Add new remote subscriptions in parallel
+      final feedsToAdd = <String>[];
       for (final rssUrl in addList) {
         final existing = await _db.getPodcastByRssUrl(rssUrl);
         if (existing == null || existing.isDead) {
-          onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feed: $rssUrl');
-          try {
-            await fetchAndSavePodcastFeed(rssUrl, onProgress: onProgress);
-          } catch (e) {
-            final errStr = AppErrorFormatter.format(e);
-            final fullErr = '$rssUrl: $errStr';
-            lastFeedWarnings.add(fullErr);
-
-            // Store a dead podcast stub in local database so it is saved in subs
-            // and future sync cycles do not continuously block timestamp updates
-            final stubTitle = _extractTitleFromUrl(rssUrl);
-            final deadPod = Podcast(
-              rssUrl: rssUrl,
-              title: stubTitle,
-              imageUrl: '',
-              description: 'Feed unavailable ($errStr)',
-              link: rssUrl,
-              lastUpdated: DateTime.now(),
-              isDead: true,
-              lastFeedError: errStr,
-              feedErrorCount: 1,
-            );
-            await _db.insertOrUpdatePodcast(deadPod);
-          }
+          feedsToAdd.add(rssUrl);
         }
       }
 
-      // 2c. Refresh existing local podcasts not included in add/remove delta
-      for (final pod in localPodcasts) {
-        if (!removeList.contains(pod.rssUrl) && !addList.contains(pod.rssUrl)) {
-          onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast: ${pod.title}');
-          try {
-            await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
-            await _db.markPodcastHealthy(pod.rssUrl);
-          } catch (e) {
-            final errStr = AppErrorFormatter.format(e);
-            final fullErr = '${pod.title} (${pod.rssUrl}): $errStr';
-            lastFeedWarnings.add(fullErr);
-            await _db.markPodcastDead(pod.rssUrl, errStr);
-          }
-        }
+      if (feedsToAdd.isNotEmpty) {
+        int addedCount = 0;
+        final totalToAdd = feedsToAdd.length;
+        onProgress?.call(SyncStage.fetchingFeed, 'Fetching podcast feeds ($addedCount/$totalToAdd)...');
+
+        await _processInParallel<String>(
+          items: feedsToAdd,
+          worker: (rssUrl) async {
+            try {
+              await fetchAndSavePodcastFeed(rssUrl);
+            } catch (e) {
+              final errStr = AppErrorFormatter.format(e);
+              final fullErr = '$rssUrl: $errStr';
+              lastFeedWarnings.add(fullErr);
+
+              // Store a dead podcast stub in local database so it is saved in subs
+              // and future sync cycles do not continuously block timestamp updates
+              final stubTitle = _extractTitleFromUrl(rssUrl);
+              final deadPod = Podcast(
+                rssUrl: rssUrl,
+                title: stubTitle,
+                imageUrl: '',
+                description: 'Feed unavailable ($errStr)',
+                link: rssUrl,
+                lastUpdated: DateTime.now(),
+                isDead: true,
+                lastFeedError: errStr,
+                feedErrorCount: 1,
+              );
+              await _db.insertOrUpdatePodcast(deadPod);
+            } finally {
+              addedCount++;
+              onProgress?.call(
+                SyncStage.fetchingFeed,
+                'Fetching podcast feeds ($addedCount/$totalToAdd)...',
+              );
+            }
+          },
+        );
+      }
+
+      // 2c. Refresh existing local podcasts not included in add/remove delta in parallel
+      final feedsToRefresh = localPodcasts
+          .where((pod) => !removeList.contains(pod.rssUrl) && !addList.contains(pod.rssUrl))
+          .toList();
+
+      if (feedsToRefresh.isNotEmpty) {
+        int refreshedCount = 0;
+        final totalToRefresh = feedsToRefresh.length;
+        onProgress?.call(SyncStage.fetchingFeed, 'Refreshing podcast feeds ($refreshedCount/$totalToRefresh)...');
+
+        await _processInParallel<Podcast>(
+          items: feedsToRefresh,
+          worker: (pod) async {
+            try {
+              await fetchAndSavePodcastFeed(pod.rssUrl);
+              await _db.markPodcastHealthy(pod.rssUrl);
+            } catch (e) {
+              final errStr = AppErrorFormatter.format(e);
+              final fullErr = '${pod.title} (${pod.rssUrl}): $errStr';
+              lastFeedWarnings.add(fullErr);
+              await _db.markPodcastDead(pod.rssUrl, errStr);
+            } finally {
+              refreshedCount++;
+              onProgress?.call(
+                SyncStage.fetchingFeed,
+                'Refreshing podcast feeds ($refreshedCount/$totalToRefresh)...',
+              );
+            }
+          },
+        );
       }
 
       if (subResponse['timestamp'] != null) {
@@ -190,7 +225,7 @@ class SyncService {
     }
   }
 
-  /// Refreshes all locally stored podcasts directly via RSS feeds
+  /// Refreshes all locally stored podcasts directly via RSS feeds in parallel
   Future<void> _refreshLocalPodcastsDirectly(SyncProgressCallback? onProgress) async {
     final localPodcasts = await _db.getAllPodcasts();
     if (localPodcasts.isEmpty) {
@@ -200,17 +235,54 @@ class SyncService {
 
     lastFeedWarnings.add('gPodder server is offline. Refreshed ${localPodcasts.length} local subscription feeds directly via RSS.');
 
-    for (final pod in localPodcasts) {
-      onProgress?.call(SyncStage.fetchingFeed, 'Refreshing local feed: ${pod.title}');
-      try {
-        await fetchAndSavePodcastFeed(pod.rssUrl, onProgress: onProgress);
-        await _db.markPodcastHealthy(pod.rssUrl);
-      } catch (e) {
-        final errStr = AppErrorFormatter.format(e);
-        lastFeedWarnings.add('${pod.title} (${pod.rssUrl}): $errStr');
-        await _db.markPodcastDead(pod.rssUrl, errStr);
+    int refreshedCount = 0;
+    final totalToRefresh = localPodcasts.length;
+    onProgress?.call(SyncStage.fetchingFeed, 'Refreshing local feeds ($refreshedCount/$totalToRefresh)...');
+
+    await _processInParallel<Podcast>(
+      items: localPodcasts,
+      worker: (pod) async {
+        try {
+          await fetchAndSavePodcastFeed(pod.rssUrl);
+          await _db.markPodcastHealthy(pod.rssUrl);
+        } catch (e) {
+          final errStr = AppErrorFormatter.format(e);
+          lastFeedWarnings.add('${pod.title} (${pod.rssUrl}): $errStr');
+          await _db.markPodcastDead(pod.rssUrl, errStr);
+        } finally {
+          refreshedCount++;
+          onProgress?.call(
+            SyncStage.fetchingFeed,
+            'Refreshing local feeds ($refreshedCount/$totalToRefresh)...',
+          );
+        }
+      },
+    );
+  }
+
+  /// Process items in parallel with a concurrency pool limit
+  Future<void> _processInParallel<T>({
+    required List<T> items,
+    required Future<void> Function(T item) worker,
+    int concurrency = 6,
+  }) async {
+    if (items.isEmpty) return;
+    int index = 0;
+    final futures = <Future<void>>[];
+
+    Future<void> runWorker() async {
+      while (true) {
+        final currentIndex = index++;
+        if (currentIndex >= items.length) break;
+        await worker(items[currentIndex]);
       }
     }
+
+    final poolSize = items.length < concurrency ? items.length : concurrency;
+    for (int i = 0; i < poolSize; i++) {
+      futures.add(runWorker());
+    }
+    await Future.wait(futures);
   }
 
   /// Push both pending subscription changes and pending playback actions to gPodder
