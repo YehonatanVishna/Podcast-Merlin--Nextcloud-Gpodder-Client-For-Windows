@@ -197,11 +197,27 @@ class DatabaseHelper {
   Future<int> insertPodcast(Podcast podcast) async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    return db.insert(
-      'podcasts',
-      podcast.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final existing = await getPodcastByUrl(podcast.rssUrl);
+    if (existing != null) {
+      final map = podcast.toMap();
+      final id = podcast.id ?? existing.id;
+      if (id != null) {
+        map['id'] = id;
+      }
+      await db.update(
+        'podcasts',
+        map,
+        where: '$_podcastRssUrlCol = ?',
+        whereArgs: [podcast.rssUrl],
+      );
+      return id ?? existing.id ?? 0;
+    } else {
+      return db.insert(
+        'podcasts',
+        podcast.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
   }
 
   Future<int> insertOrUpdatePodcast(Podcast podcast) async => insertPodcast(podcast);
@@ -292,29 +308,79 @@ class DatabaseHelper {
   // EPISODE CRUD OPERATIONS
 
   Future<void> insertEpisodes(List<Episode> episodes) async {
+    if (episodes.isEmpty) return;
     final db = await instance.database;
     await _detectColumnNames(db);
+
+    final podcastIds = episodes.map((e) => e.podcastId).whereType<int>().toSet();
+    final Map<String, Episode> existingByGuid = {};
+    final Map<String, Episode> existingByMediaUrl = {};
+
+    for (final podId in podcastIds) {
+      final existingList = await getEpisodesForPodcast(podId);
+      for (final existing in existingList) {
+        if (existing.guid.isNotEmpty) {
+          existingByGuid['$podId:${existing.guid}'] = existing;
+        }
+        if (existing.mediaUrl.isNotEmpty) {
+          existingByMediaUrl['$podId:${existing.mediaUrl}'] = existing;
+        }
+      }
+    }
+
     final batch = db.batch();
     for (final episode in episodes) {
-      final map = episode.toMap();
-      final adaptedMap = <String, dynamic>{
-        if (map.containsKey('id')) 'id': map['id'],
-        _podcastIdCol: episode.podcastId,
-        'guid': episode.guid,
-        'title': episode.title,
-        'description': episode.description,
-        _mediaUrlCol: episode.mediaUrl,
-        _pubDateCol: episode.publishedAt?.toIso8601String(),
-        'duration': episode.duration,
-        'position': episode.position,
-        _isPlayedCol: episode.isPlayed ? 1 : 0,
-        'imageUrl': episode.imageUrl,
-      };
-      batch.insert(
-        'episodes',
-        adaptedMap,
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      final podId = episode.podcastId;
+      final guidKey = podId != null && episode.guid.isNotEmpty ? '$podId:${episode.guid}' : null;
+      final mediaKey = podId != null && episode.mediaUrl.isNotEmpty ? '$podId:${episode.mediaUrl}' : null;
+
+      final existing = (guidKey != null ? existingByGuid[guidKey] : null) ??
+          (mediaKey != null ? existingByMediaUrl[mediaKey] : null);
+
+      if (existing != null) {
+        final finalPosition = existing.position > episode.position ? existing.position : episode.position;
+        final finalIsPlayed = existing.isPlayed || episode.isPlayed;
+
+        final adaptedMap = <String, dynamic>{
+          _podcastIdCol: episode.podcastId,
+          'guid': episode.guid,
+          'title': episode.title,
+          'description': episode.description,
+          _mediaUrlCol: episode.mediaUrl,
+          _pubDateCol: episode.publishedAt?.toIso8601String(),
+          'duration': episode.duration > 0 ? episode.duration : existing.duration,
+          'position': finalPosition,
+          _isPlayedCol: finalIsPlayed ? 1 : 0,
+          'imageUrl': episode.imageUrl.isNotEmpty ? episode.imageUrl : existing.imageUrl,
+        };
+
+        batch.update(
+          'episodes',
+          adaptedMap,
+          where: 'id = ?',
+          whereArgs: [existing.id],
+        );
+      } else {
+        final map = episode.toMap();
+        final adaptedMap = <String, dynamic>{
+          if (map.containsKey('id')) 'id': map['id'],
+          _podcastIdCol: episode.podcastId,
+          'guid': episode.guid,
+          'title': episode.title,
+          'description': episode.description,
+          _mediaUrlCol: episode.mediaUrl,
+          _pubDateCol: episode.publishedAt?.toIso8601String(),
+          'duration': episode.duration,
+          'position': episode.position,
+          _isPlayedCol: episode.isPlayed ? 1 : 0,
+          'imageUrl': episode.imageUrl,
+        };
+        batch.insert(
+          'episodes',
+          adaptedMap,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
     }
     await batch.commit(noResult: true);
   }

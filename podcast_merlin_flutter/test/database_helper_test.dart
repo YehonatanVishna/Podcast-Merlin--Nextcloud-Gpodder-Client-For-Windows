@@ -248,5 +248,94 @@ void main() {
       final pendingAfter = await db.getPendingActions();
       expect(pendingAfter.isEmpty, isTrue);
     });
+
+    test('refreshing podcast feed or adding new episodes preserves existing episode playback positions and played status', () async {
+      final podcast = const Podcast(
+        rssUrl: 'https://example.com/refresh_test.xml',
+        title: 'Refresh Test Podcast',
+        description: 'Test Description',
+        imageUrl: 'https://example.com/image.png',
+        link: 'https://example.com',
+      );
+
+      // 1. Initial subscription / save feed
+      final podcastId = await db.insertOrUpdatePodcast(podcast);
+
+      final episode1 = Episode(
+        podcastId: podcastId,
+        podcastRss: 'https://example.com/refresh_test.xml',
+        guid: 'ep-1',
+        title: 'Episode 1',
+        description: 'Desc 1',
+        mediaUrl: 'https://example.com/ep1.mp3',
+        publishedAt: DateTime.now().subtract(const Duration(days: 2)),
+        duration: 1000,
+        position: 0,
+        isPlayed: false,
+        imageUrl: '',
+      );
+
+      await db.insertEpisodes([episode1]);
+
+      // 2. User plays episode 1 to position 500
+      await db.updateEpisodeProgress('https://example.com/ep1.mp3', 500, false);
+
+      final ep1BeforeRefresh = await db.getEpisodeByMediaUrl('https://example.com/ep1.mp3');
+      expect(ep1BeforeRefresh!.position, equals(500));
+
+      // 3. Podcast feed is refreshed (new episode 2 is added)
+      final podcastFromRss = const Podcast(
+        rssUrl: 'https://example.com/refresh_test.xml',
+        title: 'Refresh Test Podcast (Updated)',
+        description: 'Test Description Updated',
+        imageUrl: 'https://example.com/image.png',
+        link: 'https://example.com',
+      );
+
+      final refreshedPodId = await db.insertOrUpdatePodcast(podcastFromRss);
+      expect(refreshedPodId, equals(podcastId));
+
+      // Refreshed episodes from RSS feed (episode 1 with pos 0 + new episode 2 with pos 0)
+      final refreshedEpisodesFromRss = [
+        Episode(
+          podcastId: refreshedPodId,
+          podcastRss: 'https://example.com/refresh_test.xml',
+          guid: 'ep-1',
+          title: 'Episode 1 (Updated)',
+          description: 'Desc 1',
+          mediaUrl: 'https://example.com/ep1.mp3',
+          publishedAt: DateTime.now().subtract(const Duration(days: 2)),
+          duration: 1000,
+          position: 0,
+          isPlayed: false,
+          imageUrl: '',
+        ),
+        Episode(
+          podcastId: refreshedPodId,
+          podcastRss: 'https://example.com/refresh_test.xml',
+          guid: 'ep-2',
+          title: 'Episode 2 (New)',
+          description: 'Desc 2',
+          mediaUrl: 'https://example.com/ep2.mp3',
+          publishedAt: DateTime.now(),
+          duration: 1200,
+          position: 0,
+          isPlayed: false,
+          imageUrl: '',
+        ),
+      ];
+
+      await db.saveEpisodesBatch(refreshedEpisodesFromRss);
+
+      // 4. Verify episode 1 still has position 500 and episode 2 was added
+      final ep1AfterRefresh = await db.getEpisodeByMediaUrl('https://example.com/ep1.mp3');
+      expect(ep1AfterRefresh, isNotNull);
+      expect(ep1AfterRefresh!.position, equals(500));
+      expect(ep1AfterRefresh.title, equals('Episode 1 (Updated)'));
+
+      final ep2AfterRefresh = await db.getEpisodeByMediaUrl('https://example.com/ep2.mp3');
+      expect(ep2AfterRefresh, isNotNull);
+      expect(ep2AfterRefresh!.position, equals(0));
+    });
   });
 }
