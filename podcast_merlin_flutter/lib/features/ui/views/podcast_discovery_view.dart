@@ -83,7 +83,7 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
                         width: 140,
                         height: 140,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const Icon(Icons.podcasts, size: 80),
+                        errorWidget: (_, _, _) => const Icon(Icons.podcasts, size: 80),
                       ),
                     ),
                   ),
@@ -172,7 +172,7 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
     final subscribedUrls = podcastsAsync.when(
       data: (list) => list.map((p) => p.rssUrl).toSet(),
       loading: () => <String>{},
-      error: (_, __) => <String>{},
+      error: (_, _) => <String>{},
     );
 
     return Scaffold(
@@ -353,7 +353,7 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
                             width: 56,
                             height: 56,
                             fit: BoxFit.cover,
-                            errorWidget: (_, __, ___) => const Icon(Icons.podcasts, size: 40),
+                            errorWidget: (_, _, _) => const Icon(Icons.podcasts, size: 40),
                           )
                         : const Icon(Icons.podcasts, size: 40),
                   ),
@@ -419,7 +419,7 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
                                 width: 64,
                                 height: 64,
                                 fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => const Icon(Icons.podcasts, size: 40),
+                                errorWidget: (_, _, _) => const Icon(Icons.podcasts, size: 40),
                               )
                             : const Icon(Icons.podcasts, size: 40),
                       ),

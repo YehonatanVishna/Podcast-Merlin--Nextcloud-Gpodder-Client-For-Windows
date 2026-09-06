@@ -373,6 +373,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       final action = GPodderAction(
         podcast: podcastRss,
         episode: _currentEpisode!.mediaUrl,
+        guid: _currentEpisode!.guid,
         action: 'play',
         timestamp: DateTime.now(),
         position: currentSec,
@@ -405,6 +406,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       final action = GPodderAction(
         podcast: podcastRss,
         episode: _currentEpisode!.mediaUrl,
+        guid: _currentEpisode!.guid,
         action: 'play',
         timestamp: DateTime.now(),
         position: totalSec,

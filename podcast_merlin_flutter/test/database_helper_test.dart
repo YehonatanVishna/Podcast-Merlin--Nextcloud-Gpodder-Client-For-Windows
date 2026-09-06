@@ -4,7 +4,6 @@ import 'package:podcast_merlin_flutter/core/database/database_helper.dart';
 import 'package:podcast_merlin_flutter/core/models/podcast.dart';
 import 'package:podcast_merlin_flutter/core/models/episode.dart';
 import 'package:podcast_merlin_flutter/core/models/gpodder_action.dart';
-import 'package:podcast_merlin_flutter/core/providers/app_providers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

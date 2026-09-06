@@ -107,6 +107,14 @@ class DatabaseHelper {
         ''');
       } catch (_) {}
 
+      try {
+        final gpodderActionInfo = await db.rawQuery('PRAGMA table_info(gpodder_actions)');
+        final gpodderCols = gpodderActionInfo.map((row) => row['name'].toString()).toSet();
+        if (!gpodderCols.contains('guid')) {
+          await db.execute('ALTER TABLE gpodder_actions ADD COLUMN guid TEXT;');
+        }
+      } catch (_) {}
+
       _columnsDetected = true;
       _detectCompleter!.complete();
     } catch (e, stack) {
@@ -180,6 +188,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         podcast TEXT,
         episode TEXT,
+        guid TEXT,
         action TEXT NOT NULL,
         position INTEGER,
         started INTEGER,
@@ -503,10 +512,119 @@ class DatabaseHelper {
     return null;
   }
 
+  Future<Episode?> getEpisodeByGuid(String guid) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE e.guid = ?
+    ''';
+    final maps = await db.rawQuery(query, [guid]);
+    if (maps.isNotEmpty) {
+      return Episode.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  static String normalizeUrl(String url) {
+    var u = url.trim();
+    if (u.isEmpty) return '';
+    try {
+      u = Uri.decodeFull(u);
+    } catch (_) {}
+    if (u.startsWith('https://')) {
+      u = u.substring(8);
+    } else if (u.startsWith('http://')) {
+      u = u.substring(7);
+    }
+    while (u.endsWith('/')) {
+      u = u.substring(0, u.length - 1);
+    }
+    final qIdx = u.indexOf('?');
+    if (qIdx != -1) {
+      u = u.substring(0, qIdx);
+    }
+    final fIdx = u.indexOf('#');
+    if (fIdx != -1) {
+      u = u.substring(0, fIdx);
+    }
+    return u.toLowerCase().trim();
+  }
+
+  /// Strips known podcast redirect trackers (Podtrac, Chartable, pdst.fm, etc.)
+  /// to reveal the underlying media file URL.
+  static String stripTrackingPrefixes(String url) {
+    var u = url.trim();
+    if (u.isEmpty) return '';
+    try {
+      u = Uri.decodeFull(u);
+    } catch (_) {}
+
+    final lastHttpIdx = u.lastIndexOf('http://');
+    final lastHttpsIdx = u.lastIndexOf('https://');
+    final lastSchemeIdx = lastHttpIdx > lastHttpsIdx ? lastHttpIdx : lastHttpsIdx;
+    if (lastSchemeIdx > 8) {
+      u = u.substring(lastSchemeIdx);
+    } else {
+      final prefixes = [
+        RegExp(r'^https?://[^/]*podtrac\.com/[^/]+(?:/[^/]+)?/'),
+        RegExp(r'^https?://[^/]*chrt\.fm/track/[^/]+/'),
+        RegExp(r'^https?://[^/]*chtbl\.com/track/[^/]+/'),
+        RegExp(r'^https?://[^/]*pdst\.fm/e/'),
+        RegExp(r'^https?://[^/]*mgln\.ai/e/[^/]+/'),
+        RegExp(r'^https?://[^/]*feedpress\.it/link/[^/]+/[^/]+/'),
+        RegExp(r'^https?://[^/]*megaphone\.fm/ad-insertion/[^/]+/'),
+      ];
+      for (final prefix in prefixes) {
+        if (prefix.hasMatch(u)) {
+          u = u.replaceFirst(prefix, '');
+          if (!u.startsWith('http://') && !u.startsWith('https://')) {
+            u = 'https://$u';
+          }
+          break;
+        }
+      }
+    }
+    return normalizeUrl(u);
+  }
+
+  /// Extracts the audio filename from an audio URL path (e.g. "episode102.mp3")
+  static String extractAudioFilename(String url) {
+    try {
+      final clean = normalizeUrl(url);
+      final lastSlash = clean.lastIndexOf('/');
+      if (lastSlash != -1 && lastSlash < clean.length - 1) {
+        final filename = clean.substring(lastSlash + 1);
+        if (filename.length >= 4 &&
+            (filename.endsWith('.mp3') ||
+             filename.endsWith('.m4a') ||
+             filename.endsWith('.aac') ||
+             filename.endsWith('.ogg') ||
+             filename.endsWith('.opus') ||
+             filename.contains('.'))) {
+          return filename;
+        }
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  /// Checks if any episode in the database has non-zero playback progress or is played
+  Future<bool> hasAnyPlaybackProgress() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final count = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM episodes WHERE position > 0 OR $_isPlayedCol = 1',
+    )) ?? 0;
+    return count > 0;
+  }
+
   Future<int> updateEpisodeProgress(String mediaUrl, int position, bool isPlayed) async {
     final db = await instance.database;
     await _detectColumnNames(db);
-    return db.update(
+    final count = await db.update(
       'episodes',
       {
         'position': position,
@@ -515,10 +633,359 @@ class DatabaseHelper {
       where: '$_mediaUrlCol = ?',
       whereArgs: [mediaUrl],
     );
+    if (count > 0) return count;
+
+    // Fallback: match by guid or normalized URL if exact mediaUrl didn't match
+    final epByGuid = await db.query('episodes', where: 'guid = ?', whereArgs: [mediaUrl]);
+    if (epByGuid.isNotEmpty) {
+      return db.update(
+        'episodes',
+        {
+          'position': position,
+          _isPlayedCol: isPlayed ? 1 : 0,
+        },
+        where: 'id = ?',
+        whereArgs: [epByGuid.first['id']],
+      );
+    }
+
+    final norm = normalizeUrl(mediaUrl);
+    if (norm.isNotEmpty) {
+      final all = await db.query('episodes', columns: ['id', _mediaUrlCol]);
+      for (final row in all) {
+        final rowUrl = (row[_mediaUrlCol] ?? '').toString();
+        if (normalizeUrl(rowUrl) == norm) {
+          return db.update(
+            'episodes',
+            {
+              'position': position,
+              _isPlayedCol: isPlayed ? 1 : 0,
+            },
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          );
+        }
+      }
+    }
+    return 0;
   }
 
   Future<int> updateEpisodePlaybackState(String mediaUrl, int position, {bool isPlayed = false}) async =>
       updateEpisodeProgress(mediaUrl, position, isPlayed);
+
+  /// Apply a batch of remote episode actions to local episodes with intelligent
+  /// matching (by GUID, exact URL, and normalized URL), chronological ordering,
+  /// and robust played state detection using episode duration from SQLite.
+  Future<int> applyRemoteEpisodeActions(List<GPodderAction> actions) async {
+    if (actions.isEmpty) return 0;
+    final db = await instance.database;
+    await _detectColumnNames(db);
+
+    final epMaps = await db.rawQuery('''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+    ''');
+    final episodes = epMaps.map((m) => Episode.fromMap(m)).toList();
+    if (episodes.isEmpty) return 0;
+
+    final episodesById = <int, Episode>{};
+    final byPodcastAndGuid = <String, int>{};
+    final byPodcastAndNormalizedGuid = <String, int>{};
+    final byGuid = <String, int>{};
+    final byGuidCaseInsensitive = <String, int>{};
+    final byNormalizedGuid = <String, int>{};
+    final byStrippedGuid = <String, int>{};
+
+    final byPodcastAndMediaUrl = <String, int>{};
+    final byPodcastAndNormalizedMediaUrl = <String, int>{};
+    final byPodcastAndStrippedMediaUrl = <String, int>{};
+    final byMediaUrl = <String, int>{};
+    final byNormalizedMediaUrl = <String, int>{};
+    final byStrippedMediaUrl = <String, int>{};
+
+    final byPodcastAndFilename = <String, int>{};
+    final filenameCount = <String, int>{};
+    final byFilename = <String, int>{};
+
+    for (final ep in episodes) {
+      final epId = ep.id;
+      if (epId == null) continue;
+      episodesById[epId] = ep;
+
+      final normPod = normalizeUrl(ep.podcastRss);
+      final guid = ep.guid.trim();
+      final normGuid = normalizeUrl(guid);
+      final strippedGuid = stripTrackingPrefixes(guid);
+      final mediaUrl = ep.mediaUrl.trim();
+      final normMediaUrl = normalizeUrl(mediaUrl);
+      final strippedMediaUrl = stripTrackingPrefixes(mediaUrl);
+      final filename = extractAudioFilename(mediaUrl);
+
+      if (guid.isNotEmpty) {
+        if (normPod.isNotEmpty) {
+          byPodcastAndGuid['$normPod|$guid'] = epId;
+          if (normGuid.isNotEmpty) {
+            byPodcastAndNormalizedGuid['$normPod|$normGuid'] = epId;
+          }
+        }
+        byGuid.putIfAbsent(guid, () => epId);
+        byGuidCaseInsensitive.putIfAbsent(guid.toLowerCase(), () => epId);
+        if (normGuid.isNotEmpty) {
+          byNormalizedGuid.putIfAbsent(normGuid, () => epId);
+        }
+        if (strippedGuid.isNotEmpty) {
+          byStrippedGuid.putIfAbsent(strippedGuid, () => epId);
+        }
+      }
+
+      if (mediaUrl.isNotEmpty) {
+        if (normPod.isNotEmpty) {
+          byPodcastAndMediaUrl['$normPod|$mediaUrl'] = epId;
+          if (normMediaUrl.isNotEmpty) {
+            byPodcastAndNormalizedMediaUrl['$normPod|$normMediaUrl'] = epId;
+          }
+          if (strippedMediaUrl.isNotEmpty) {
+            byPodcastAndStrippedMediaUrl['$normPod|$strippedMediaUrl'] = epId;
+          }
+        }
+        byMediaUrl.putIfAbsent(mediaUrl, () => epId);
+        if (normMediaUrl.isNotEmpty) {
+          byNormalizedMediaUrl.putIfAbsent(normMediaUrl, () => epId);
+        }
+        if (strippedMediaUrl.isNotEmpty) {
+          byStrippedMediaUrl.putIfAbsent(strippedMediaUrl, () => epId);
+        }
+      }
+
+      if (filename.isNotEmpty) {
+        if (normPod.isNotEmpty) {
+          byPodcastAndFilename['$normPod|$filename'] = epId;
+        }
+        filenameCount[filename] = (filenameCount[filename] ?? 0) + 1;
+        if (filenameCount[filename] == 1) {
+          byFilename[filename] = epId;
+        } else {
+          byFilename.remove(filename); // Not unique
+        }
+      }
+    }
+
+    final actionsByEpisodeId = <int, List<GPodderAction>>{};
+
+    for (final action in actions) {
+      final actName = action.action.toLowerCase().trim();
+      final isPlayLike = actName == 'play' ||
+          actName == 'played' ||
+          actName == 'finish' ||
+          actName == 'finished' ||
+          actName == 'completed' ||
+          actName == 'listen' ||
+          actName == 'listened' ||
+          actName == 'pause' ||
+          actName == 'stop' ||
+          actName == 'progress' ||
+          action.position > 0;
+      final isNewLike = actName == 'new';
+      if (!isPlayLike && !isNewLike) continue;
+
+      final guid = action.guid?.trim();
+      final normGuid = guid != null ? normalizeUrl(guid) : '';
+      final strippedActionGuid = guid != null ? stripTrackingPrefixes(guid) : '';
+      final epUrl = action.episode.trim();
+      final podUrl = action.podcast.trim();
+      final normPod = normalizeUrl(podUrl);
+      final normEp = normalizeUrl(epUrl);
+      final strippedEp = stripTrackingPrefixes(epUrl);
+      final actFilename = extractAudioFilename(epUrl);
+
+      int? matchedId;
+
+      // 1. Try matching by action.guid within podcast
+      if (guid != null && guid.isNotEmpty && guid.toLowerCase() != 'null') {
+        if (normPod.isNotEmpty) {
+          matchedId = byPodcastAndGuid['$normPod|$guid'];
+          if (matchedId == null && normGuid.isNotEmpty) {
+            matchedId = byPodcastAndNormalizedGuid['$normPod|$normGuid'];
+          }
+        }
+        // 2. Try matching by action.guid globally
+        matchedId ??= byGuid[guid];
+        matchedId ??= byGuidCaseInsensitive[guid.toLowerCase()];
+        if (matchedId == null && normGuid.isNotEmpty) {
+          matchedId = byNormalizedGuid[normGuid];
+        }
+        if (matchedId == null && strippedActionGuid.isNotEmpty) {
+          matchedId = byStrippedGuid[strippedActionGuid];
+        }
+      }
+
+      // 3. Try stripped mediaUrl within podcast
+      if (matchedId == null && strippedEp.isNotEmpty && normPod.isNotEmpty) {
+        matchedId = byPodcastAndStrippedMediaUrl['$normPod|$strippedEp'];
+      }
+
+      // 4. Try normalized mediaUrl within podcast
+      if (matchedId == null && normEp.isNotEmpty && normPod.isNotEmpty) {
+        matchedId = byPodcastAndNormalizedMediaUrl['$normPod|$normEp'];
+      }
+
+      // 5. Try exact mediaUrl within podcast
+      if (matchedId == null && epUrl.isNotEmpty && normPod.isNotEmpty) {
+        matchedId = byPodcastAndMediaUrl['$normPod|$epUrl'];
+      }
+
+      // 6. Try audio filename within podcast
+      if (matchedId == null && actFilename.isNotEmpty && normPod.isNotEmpty) {
+        matchedId = byPodcastAndFilename['$normPod|$actFilename'];
+      }
+
+      // 7. Try stripped mediaUrl globally
+      if (matchedId == null && strippedEp.isNotEmpty) {
+        matchedId = byStrippedMediaUrl[strippedEp];
+      }
+
+      // 8. Try normalized mediaUrl globally
+      if (matchedId == null && normEp.isNotEmpty) {
+        matchedId = byNormalizedMediaUrl[normEp];
+      }
+
+      // 9. Try exact mediaUrl globally
+      if (matchedId == null && epUrl.isNotEmpty) {
+        matchedId = byMediaUrl[epUrl];
+      }
+
+      // 10. Try unique audio filename globally
+      if (matchedId == null && actFilename.isNotEmpty && actFilename.length >= 10) {
+        matchedId = byFilename[actFilename];
+      }
+
+      // 11. Cross-matching: test action.episode against guid
+      if (matchedId == null && epUrl.isNotEmpty) {
+        if (normPod.isNotEmpty) {
+          matchedId = byPodcastAndGuid['$normPod|$epUrl'];
+          if (matchedId == null && normEp.isNotEmpty) {
+            matchedId = byPodcastAndNormalizedGuid['$normPod|$normEp'];
+          }
+        }
+        matchedId ??= byGuid[epUrl];
+        if (matchedId == null && normEp.isNotEmpty) {
+          matchedId = byNormalizedGuid[normEp];
+        }
+      }
+
+      // 12. Cross-matching: test action.guid against mediaUrl
+      if (matchedId == null && guid != null && guid.isNotEmpty && guid.toLowerCase() != 'null') {
+        matchedId = byStrippedMediaUrl[stripTrackingPrefixes(guid)];
+        matchedId ??= byNormalizedMediaUrl[normalizeUrl(guid)];
+        matchedId ??= byMediaUrl[guid];
+      }
+
+      // 13. Suffix match within podcast (handles complex redirect/CDN wrappers)
+      if (matchedId == null && normPod.isNotEmpty && normEp.isNotEmpty) {
+        for (final ep in episodes) {
+          if (normalizeUrl(ep.podcastRss) == normPod) {
+            final epNorm = normalizeUrl(ep.mediaUrl);
+            if (epNorm.length >= 15 && normEp.length >= 15) {
+              if (epNorm.endsWith(normEp) || normEp.endsWith(epNorm)) {
+                matchedId = ep.id;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (matchedId != null) {
+        actionsByEpisodeId.putIfAbsent(matchedId, () => []).add(action);
+      }
+    }
+
+    final batch = db.batch();
+    int updateCount = 0;
+
+    for (final entry in actionsByEpisodeId.entries) {
+      final epId = entry.key;
+      final ep = episodesById[epId]!;
+      final epActions = entry.value;
+
+      // Sort chronologically: oldest first, latest last
+      epActions.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      int finalPos = ep.position;
+      bool finalPlayed = ep.isPlayed;
+      final epDuration = ep.duration;
+
+      for (final act in epActions) {
+        final actType = act.action.toLowerCase().trim();
+        if (actType == 'new') {
+          finalPos = 0;
+          finalPlayed = false;
+          continue;
+        }
+
+        final actPos = act.position < 0 ? 0 : act.position;
+        final total = act.total > 0 ? act.total : epDuration;
+
+        bool isActPlayed = false;
+        if (actType == 'played' ||
+            actType == 'finish' ||
+            actType == 'finished' ||
+            actType == 'completed') {
+          isActPlayed = true;
+        } else if (total > 0 && actPos >= (total - 15)) {
+          isActPlayed = true;
+        } else if (total > 0 && actPos >= (total * 0.95).round()) {
+          isActPlayed = true;
+        } else if (act.started > 0 && act.started == actPos && epDuration > 0 && actPos >= (epDuration - 15)) {
+          isActPlayed = true;
+        } else if (act.started > 0 && actPos > 0 && act.started == actPos && (total <= 0 || actPos >= total)) {
+          // AntennaPod mark as played often sets started == position == duration
+          isActPlayed = true;
+        }
+
+        if (isActPlayed) {
+          finalPlayed = true;
+          finalPos = actPos > finalPos ? actPos : (finalPos > 0 ? finalPos : (epDuration > 0 ? epDuration : actPos));
+          if (finalPos == 0 && epDuration > 0) {
+            finalPos = epDuration;
+          }
+        } else {
+          finalPos = actPos;
+          if (finalPlayed && actPos < 30) {
+            // Retain played state if previously finished and this is just an accidental scrub
+          } else {
+            finalPlayed = false;
+          }
+        }
+      }
+
+      if (epDuration > 0 && finalPos > epDuration) {
+        finalPos = epDuration;
+      }
+
+      if (finalPos != ep.position || (finalPlayed ? 1 : 0) != (ep.isPlayed ? 1 : 0)) {
+        batch.update(
+          'episodes',
+          {
+            'position': finalPos,
+            _isPlayedCol: finalPlayed ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [epId],
+        );
+        updateCount++;
+      }
+    }
+
+    if (updateCount > 0) {
+      await batch.commit(noResult: true);
+    }
+    if (kDebugMode) {
+      print('applyRemoteEpisodeActions: received ${actions.length} actions, matched ${actionsByEpisodeId.length} episodes, updated $updateCount episodes in SQLite');
+    }
+    return updateCount;
+  }
 
   // GPODDER OFFLINE ACTION QUEUE & BACKLOG
 
@@ -549,10 +1016,18 @@ class DatabaseHelper {
       final podcastCol = cols.contains('podcast') ? 'podcast' : 'podcastUrl';
       final episodeCol = cols.contains('episode') ? 'episode' : 'episodeUrl';
 
+      String whereClause = '$podcastCol = ? AND $episodeCol = ? AND action = ?';
+      List<dynamic> whereArgs = [action.podcast, action.episode, 'play'];
+
+      if (cols.contains('guid') && action.guid != null && action.guid!.isNotEmpty) {
+        whereClause = '$podcastCol = ? AND (guid = ? OR $episodeCol = ?) AND action = ?';
+        whereArgs = [action.podcast, action.guid, action.episode, 'play'];
+      }
+
       final existing = await db.query(
         'gpodder_actions',
-        where: '$podcastCol = ? AND $episodeCol = ? AND action = ?',
-        whereArgs: [action.podcast, action.episode, 'play'],
+        where: whereClause,
+        whereArgs: whereArgs,
       );
 
       if (existing.isNotEmpty) {
@@ -589,7 +1064,8 @@ class DatabaseHelper {
 
     for (final action in actions) {
       if (action.action == 'play') {
-        final key = '${action.podcastFeedUrl}|${action.episodeMediaUrl}';
+        final epKey = (action.guid != null && action.guid!.isNotEmpty) ? action.guid! : action.episodeMediaUrl;
+        final key = '${action.podcastFeedUrl}|$epKey';
         if (!collapsedMap.containsKey(key)) {
           collapsedMap[key] = action;
         } else {

@@ -38,7 +38,7 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
     state = state.copyWith(feedWarnings: const []);
   }
 
-  Future<bool> performFullSync() async {
+  Future<bool> performFullSync({bool forceFullResync = false}) async {
     if (state.isSyncing) return false;
     state = const SyncStatusState(
       isSyncing: true,
@@ -50,6 +50,7 @@ class SyncStatusNotifier extends StateNotifier<SyncStatusState> {
 
     try {
       final success = await _sync.performFullSync(
+        forceFullResync: forceFullResync,
         onProgress: (stage, detail) {
           state = SyncStatusState(
             isSyncing: true,
@@ -135,9 +136,21 @@ final audioHandlerProvider = Provider<MerlinAudioHandler>((ref) {
 class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
   final DatabaseHelper _db;
   final SyncStatusNotifier _syncStatusNotifier;
+  StreamSubscription<SyncStatusState>? _syncSub;
 
   PodcastsNotifier(this._db, this._syncStatusNotifier) : super(const AsyncValue.loading()) {
     loadPodcasts();
+    _syncSub = _syncStatusNotifier.stream.listen((syncState) {
+      if (!syncState.isSyncing && syncState.stage == SyncStage.completed) {
+        loadPodcasts();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   Future<void> loadPodcasts() async {
@@ -182,8 +195,8 @@ class PodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> {
     }
   }
 
-  Future<void> refreshAll() async {
-    await _syncStatusNotifier.performFullSync();
+  Future<void> refreshAll({bool forceFullResync = false}) async {
+    await _syncStatusNotifier.performFullSync(forceFullResync: forceFullResync);
     await loadPodcasts();
   }
 }
@@ -238,6 +251,7 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
   final MerlinAudioHandler _audioHandler;
   final int? _podcastId;
   StreamSubscription<PositionUpdateEvent>? _posSub;
+  StreamSubscription<SyncStatusState>? _syncSub;
   static const int pageSize = 25;
 
   EpisodesNotifier(this._db, this._syncStatusNotifier, this._audioHandler, this._podcastId)
@@ -246,11 +260,17 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     _posSub = _audioHandler.onPositionUpdated.listen((event) {
       updateEpisodeProgress(event.mediaUrl, event.position, event.isPlayed);
     });
+    _syncSub = _syncStatusNotifier.stream.listen((syncState) {
+      if (!syncState.isSyncing && syncState.stage == SyncStage.completed) {
+        loadEpisodes(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
     _posSub?.cancel();
+    _syncSub?.cancel();
     super.dispose();
   }
 
@@ -267,21 +287,24 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     }
   }
 
-  Future<void> loadEpisodes({EpisodeFilter? filter}) async {
+  Future<void> loadEpisodes({EpisodeFilter? filter, bool silent = false}) async {
     final currentFilter = filter ?? state.filter;
-    state = state.copyWith(isLoading: true, error: null, filter: currentFilter);
+    if (!silent || state.episodes.isEmpty) {
+      state = state.copyWith(isLoading: true, error: null, filter: currentFilter);
+    }
     try {
       final podcastId = _podcastId;
+      final fetchLimit = state.episodes.length > pageSize ? state.episodes.length : pageSize;
       final list = podcastId != null
-          ? await _db.getEpisodesForPodcast(podcastId, limit: pageSize, offset: 0, filter: currentFilter)
-          : await _db.getAllEpisodes(limit: pageSize, offset: 0, filter: currentFilter);
+          ? await _db.getEpisodesForPodcast(podcastId, limit: fetchLimit, offset: 0, filter: currentFilter)
+          : await _db.getAllEpisodes(limit: fetchLimit, offset: 0, filter: currentFilter);
 
       if (mounted) {
         state = EpisodesState(
           episodes: list,
           isLoading: false,
           isLoadingMore: false,
-          hasMore: list.length >= pageSize,
+          hasMore: list.length >= fetchLimit,
           filter: currentFilter,
         );
         ImageCacheService.precacheBatch(list.map((e) => e.imageUrl));

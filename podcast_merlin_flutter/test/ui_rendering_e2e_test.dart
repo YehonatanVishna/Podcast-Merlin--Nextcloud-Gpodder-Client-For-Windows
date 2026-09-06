@@ -22,7 +22,7 @@ class TestPodcastsNotifier extends StateNotifier<AsyncValue<List<Podcast>>> impl
   Future<bool> addPodcastFeed(String rssUrl) async => true;
 
   @override
-  Future<void> refreshAll() async {}
+  Future<void> refreshAll({bool forceFullResync = false}) async {}
 
   @override
   Future<void> removePodcast(String rssUrl) async {}
@@ -40,13 +40,11 @@ class TestEpisodesNotifier extends StateNotifier<EpisodesState> implements Episo
         );
 
   @override
-  Future<void> loadEpisodes({EpisodeFilter? filter}) async {}
+  Future<void> loadEpisodes({EpisodeFilter? filter, bool silent = false}) async {}
 
   @override
   Future<void> loadMoreEpisodes() async {}
 
-  @override
-  Future<void> refreshFeed() async {}
 
   @override
   Future<void> refresh({Podcast? podcast}) async {}

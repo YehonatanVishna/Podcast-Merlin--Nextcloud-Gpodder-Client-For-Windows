@@ -13,6 +13,7 @@ class SecureStorageService {
   static const String keyPassword = 'nextcloud_password';
   static const String keyDeviceId = 'gpodder_device_id';
   static const String keyLastActionTimestamp = 'last_action_timestamp';
+  static const String keyLastSubscriptionTimestamp = 'last_subscription_timestamp';
   static const String keyPodcastIndexApiKey = 'podcast_index_api_key';
   static const String keyPodcastIndexApiSecret = 'podcast_index_api_secret';
 

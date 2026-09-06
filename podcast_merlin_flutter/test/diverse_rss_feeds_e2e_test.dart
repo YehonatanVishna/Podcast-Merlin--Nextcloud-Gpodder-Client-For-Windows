@@ -23,13 +23,11 @@ class TestEpisodesNotifier extends StateNotifier<EpisodesState> implements Episo
         );
 
   @override
-  Future<void> loadEpisodes({EpisodeFilter? filter}) async {}
+  Future<void> loadEpisodes({EpisodeFilter? filter, bool silent = false}) async {}
 
   @override
   Future<void> loadMoreEpisodes() async {}
 
-  @override
-  Future<void> refreshFeed() async {}
 
   @override
   Future<void> refresh({Podcast? podcast}) async {}

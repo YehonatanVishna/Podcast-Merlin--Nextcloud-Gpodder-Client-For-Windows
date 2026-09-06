@@ -8,7 +8,7 @@ import 'package:podcast_merlin_flutter/features/ui/views/podcast_catalog_view.da
 
 class FakeSyncService extends SyncService {
   @override
-  Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
+  Future<bool> performFullSync({SyncProgressCallback? onProgress, bool forceFullResync = false}) async {
     onProgress?.call(SyncStage.connectingGpodder, 'Connecting to gPodder...');
     await Future.delayed(const Duration(milliseconds: 50));
     onProgress?.call(SyncStage.fetchingSubscriptions, 'Fetching subscriptions from gPodder...');

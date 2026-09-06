@@ -222,8 +222,12 @@ class MockGPodderServer {
       return actTs >= sinceTs;
     }).map((a) => a.toApiJson()).toList();
 
+    final currentTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     response.statusCode = HttpStatus.ok;
-    response.write(jsonEncode({'actions': filtered}));
+    response.write(jsonEncode({
+      'actions': filtered,
+      'timestamp': currentTs,
+    }));
   }
 
   Future<void> _handlePostEpisodeActions(

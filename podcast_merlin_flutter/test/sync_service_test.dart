@@ -56,6 +56,8 @@ class TestGPodderApiClient extends GPodderApiClient {
     return mockSubscriptionResponse;
   }
 
+  int? lastFetchActionsSinceTs;
+
   @override
   Future<List<GPodderAction>> fetchEpisodeActions({
     required String serverUrl,
@@ -63,6 +65,7 @@ class TestGPodderApiClient extends GPodderApiClient {
     required String password,
     int sinceTimestamp = 0,
   }) async {
+    lastFetchActionsSinceTs = sinceTimestamp;
     if (!shouldSucceed) return [];
     return mockEpisodeActions;
   }
@@ -236,7 +239,6 @@ void main() {
       // Pre-save a non-zero timestamp in secure storage
       await storage.write(SecureStorageService.keyLastActionTimestamp, '1720000000');
 
-      int capturedSinceTs = -1;
       final apiClient = TestGPodderApiClient();
       apiClient.mockSubscriptionResponse = {
         'add': <String>[],
@@ -257,6 +259,7 @@ void main() {
       // Perform full sync and ensure sinceTimestamp 0 was requested
       final success = await syncService.performFullSync();
       expect(success, isTrue);
+      expect(apiClient.lastFetchActionsSinceTs, equals(0));
     });
 
     test('performFullSync creates dead podcast stub in SQLite DB when adding a failing RSS feed', () async {

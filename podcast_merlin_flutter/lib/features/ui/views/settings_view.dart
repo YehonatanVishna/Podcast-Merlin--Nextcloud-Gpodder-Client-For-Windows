@@ -41,8 +41,19 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   Future<void> _saveCredentials() async {
     final storage = ref.read(secureStorageProvider);
-    await storage.write(SecureStorageService.keyServerUrl, _serverController.text.trim());
-    await storage.write(SecureStorageService.keyUsername, _userController.text.trim());
+    final oldServer = await storage.read(SecureStorageService.keyServerUrl) ?? '';
+    final oldUser = await storage.read(SecureStorageService.keyUsername) ?? '';
+    final newServer = _serverController.text.trim();
+    final newUser = _userController.text.trim();
+
+    if (oldServer != newServer || oldUser != newUser) {
+      // Credentials or server changed, reset sync timestamps so next sync does a clean full fetch
+      await storage.delete(SecureStorageService.keyLastSubscriptionTimestamp);
+      await storage.delete(SecureStorageService.keyLastActionTimestamp);
+    }
+
+    await storage.write(SecureStorageService.keyServerUrl, newServer);
+    await storage.write(SecureStorageService.keyUsername, newUser);
     await storage.write(SecureStorageService.keyPassword, _passwordController.text.trim());
 
     if (mounted) {
@@ -252,6 +263,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                               : () async {
                                   await _saveCredentials();
                                   ref.read(podcastsNotifierProvider.notifier).refreshAll();
+                                },
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Force Full Re-sync (Retrieve all played positions)'),
+                          onPressed: isSyncing
+                              ? null
+                              : () async {
+                                  await _saveCredentials();
+                                  ref.read(podcastsNotifierProvider.notifier).refreshAll(forceFullResync: true);
                                 },
                         ),
                       ],

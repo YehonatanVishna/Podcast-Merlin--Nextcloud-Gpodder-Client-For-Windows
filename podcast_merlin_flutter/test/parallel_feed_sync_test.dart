@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:podcast_merlin_flutter/core/database/database_helper.dart';
-import 'package:podcast_merlin_flutter/core/models/sync_status.dart';
 import 'package:podcast_merlin_flutter/features/podcasts/rss_feed_parser.dart';
 import 'package:podcast_merlin_flutter/features/sync/sync_service.dart';
 import 'sync_service_test.dart';

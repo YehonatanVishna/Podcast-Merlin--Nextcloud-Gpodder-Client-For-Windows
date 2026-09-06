@@ -29,7 +29,10 @@ class SyncService {
         _rssParser = rssParser ?? RssFeedParser();
 
   /// Full synchronization workflow (Ping server first; if online -> push backlog & pull changes; if offline -> parse existing subscriptions directly)
-  Future<bool> performFullSync({SyncProgressCallback? onProgress}) async {
+  Future<bool> performFullSync({
+    SyncProgressCallback? onProgress,
+    bool forceFullResync = false,
+  }) async {
     lastError = null;
     lastFeedWarnings = [];
 
@@ -52,6 +55,7 @@ class SyncService {
     );
 
     if (!isOnline) {
+      lastFeedWarnings.add('Could not connect to gPodder server (${_apiClient.lastError ?? "server unreachable"}). Falling back to refreshing local feeds.');
       // Offline fallback mode: proceed directly to parse existing local subscriptions via RSS
       onProgress?.call(SyncStage.fetchingFeed, 'gPodder server offline. Refreshing local subscriptions...');
       await _refreshLocalPodcastsDirectly(onProgress);
@@ -61,7 +65,7 @@ class SyncService {
     try {
       // 1. Push pending subscription backlog & pending play actions
       onProgress?.call(SyncStage.pushingActions, 'Pushing local backlog to gPodder...');
-      await _pushPendingSubscriptionChanges(serverUrl!, username!, password!);
+      await _pushPendingSubscriptionChanges(serverUrl, username, password);
       final pushedOk = await _pushPendingActions(serverUrl, username, password);
       if (!pushedOk) {
         lastFeedWarnings.add('Failed to push offline playback actions to gPodder server.');
@@ -69,26 +73,39 @@ class SyncService {
 
       // 2. Fetch remote subscription changes
       onProgress?.call(SyncStage.fetchingSubscriptions, 'Fetching subscriptions from gPodder...');
-      final lastTsRaw = await _storage.read(SecureStorageService.keyLastActionTimestamp) ?? '0';
-      final lastTs = int.tryParse(lastTsRaw) ?? 0;
+      if (forceFullResync) {
+        await _storage.delete(SecureStorageService.keyLastSubscriptionTimestamp);
+        await _storage.delete(SecureStorageService.keyLastActionTimestamp);
+      }
 
+      final lastSubTsRaw = await _storage.read(SecureStorageService.keyLastSubscriptionTimestamp);
+      final lastActionTsRaw = await _storage.read(SecureStorageService.keyLastActionTimestamp);
+
+      // Detection: if keyLastSubscriptionTimestamp has never been written,
+      // this is first sync (or upgrade), so we must ensure episode actions are fetched from 0.
+      final isNewSubscriptionStorage = lastSubTsRaw == null;
+
+      final lastSubTs = int.tryParse(lastSubTsRaw ?? lastActionTsRaw ?? '0') ?? 0;
+      final lastActionTs = isNewSubscriptionStorage ? 0 : (int.tryParse(lastActionTsRaw ?? '0') ?? 0);
+
+      final hasPlayback = await _db.hasAnyPlaybackProgress();
       final localPodcasts = await _db.getAllPodcasts();
-      // If local database has 0 podcasts, force sinceTimestamp = 0 to retrieve full subscription list from server
-      final fetchSinceTs = localPodcasts.isEmpty ? 0 : lastTs;
+      // If local database has 0 podcasts or forceFullResync is true, force sinceTimestamp = 0
+      final fetchSubSinceTs = (localPodcasts.isEmpty || forceFullResync) ? 0 : lastSubTs;
+      // If forceFullResync, or first sync, or if local database has 0 playback progress, force fetch from 0
+      final fetchActionSinceTs = (forceFullResync || !hasPlayback || lastActionTs == 0) ? 0 : lastActionTs;
 
       final subResponse = await _apiClient.fetchSubscriptions(
         serverUrl: serverUrl,
         username: username,
         password: password,
-        sinceTimestamp: fetchSinceTs,
+        sinceTimestamp: fetchSubSinceTs,
       );
 
       if (subResponse == null) {
         lastError = 'Failed to fetch subscriptions: ${_apiClient.lastError ?? "Unable to retrieve subscriptions from server"}';
         return false;
       }
-
-      int? newTimestampToSave;
 
       final addList = (subResponse['add'] as List?)?.cast<String>() ?? [];
       final removeList = (subResponse['remove'] as List?)?.cast<String>() ?? [];
@@ -184,36 +201,53 @@ class SyncService {
         );
       }
 
-      if (subResponse['timestamp'] != null) {
-        newTimestampToSave = (subResponse['timestamp'] as num).toInt();
-      }
-
       // 3. Fetch remote episode actions
       onProgress?.call(SyncStage.fetchingEpisodeActions, 'Syncing episode playback with gPodder...');
-      final remoteActions = await _apiClient.fetchEpisodeActions(
+      var remoteActions = await _apiClient.fetchEpisodeActions(
         serverUrl: serverUrl,
         username: username,
         password: password,
-        sinceTimestamp: fetchSinceTs,
+        sinceTimestamp: fetchActionSinceTs,
       );
 
-      for (final action in remoteActions) {
-        if (action.action == 'play') {
-          final isPlayed = (action.total > 0 && action.position >= (action.total - 10)) ||
-              (action.total == 0 && action.position > 120);
-          await _db.updateEpisodePlaybackState(
-            action.episode,
-            action.position,
-            isPlayed: isPlayed,
+      // Fallback: If an incremental fetch returned 0 actions and local database has no playback progress,
+      // fallback to full history (since 0) to ensure we do not miss past played positions.
+      if (remoteActions.isEmpty && fetchActionSinceTs > 0) {
+        final currentPlayback = await _db.hasAnyPlaybackProgress();
+        if (!currentPlayback) {
+          remoteActions = await _apiClient.fetchEpisodeActions(
+            serverUrl: serverUrl,
+            username: username,
+            password: password,
+            sinceTimestamp: 0,
           );
         }
       }
 
-      // 4. Save new timestamp
-      if (newTimestampToSave != null && newTimestampToSave > 0) {
+      if (_apiClient.lastError != null && remoteActions.isEmpty) {
+        lastFeedWarnings.add('Failed to retrieve episode actions: ${_apiClient.lastError}');
+      } else if (remoteActions.isNotEmpty) {
+        final updatedCount = await _db.applyRemoteEpisodeActions(remoteActions);
+        onProgress?.call(
+          SyncStage.fetchingEpisodeActions,
+          'Applied playback positions to $updatedCount episodes (${remoteActions.length} actions from server).',
+        );
+      }
+
+      // 4. Save new timestamps
+      final newSubTs = (subResponse['timestamp'] as num?)?.toInt();
+      if (newSubTs != null && newSubTs > 0) {
+        await _storage.write(
+          SecureStorageService.keyLastSubscriptionTimestamp,
+          newSubTs.toString(),
+        );
+      }
+
+      final newActionTs = _apiClient.lastEpisodeActionTimestamp ?? newSubTs;
+      if (newActionTs != null && newActionTs > 0 && _apiClient.lastError == null) {
         await _storage.write(
           SecureStorageService.keyLastActionTimestamp,
-          newTimestampToSave.toString(),
+          newActionTs.toString(),
         );
       }
 

@@ -17,16 +17,18 @@ class GPodderApiException implements Exception {
 class GPodderApiClient {
   final Dio _dio;
   String? lastError;
+  int? lastEpisodeActionTimestamp;
 
   GPodderApiClient({Dio? dio})
       : _dio = dio ??
             Dio(
               BaseOptions(
-                connectTimeout: const Duration(seconds: 15),
-                receiveTimeout: const Duration(seconds: 15),
+                connectTimeout: const Duration(seconds: 30),
+                receiveTimeout: const Duration(seconds: 60),
                 headers: {
                   'User-Agent': 'PodcastMerlin/2.0 (Flutter)',
                   'Content-Type': 'application/json',
+                  'Accept': 'application/json',
                 },
               ),
             );
@@ -37,10 +39,16 @@ class GPodderApiClient {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
     }
-    if (url.endsWith('/')) {
+    while (url.endsWith('/')) {
       url = url.substring(0, url.length - 1);
     }
+    if (url.endsWith('/index.php')) {
+      url = url.substring(0, url.length - 10);
+    }
     final lower = url.toLowerCase();
+    if (lower.contains('gpodder.net')) {
+      return url;
+    }
     if (!lower.contains('/apps/gpoddersync') && !lower.contains('/apps/gpodder')) {
       url = '$url/index.php/apps/gpoddersync';
     }
@@ -93,8 +101,8 @@ class GPodderApiClient {
       final response = await _dio.get(
         '$baseUrl/subscriptions?since=2147483647',
         options: _getAuthOptions(username, password).copyWith(
-          sendTimeout: const Duration(seconds: 4),
-          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
         ),
       );
       if (response.statusCode == 200) {
@@ -146,17 +154,73 @@ class GPodderApiClient {
     required String password,
     int sinceTimestamp = 0,
   }) async {
-    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
-    if (!isOnline) {
+    if (serverUrl.trim().isEmpty || username.trim().isEmpty || password.trim().isEmpty) {
+      lastError = 'Server credentials not configured.';
       return null;
     }
 
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
-      final response = await _dio.get(
-        '$baseUrl/subscriptions?since=$sinceTimestamp',
-        options: _getAuthOptions(username, password),
-      );
+      final options = _getAuthOptions(username, password);
+
+      final queryParam = sinceTimestamp > 0 ? '?since=$sinceTimestamp' : '';
+      final urlsToTry = <String>[
+        '$baseUrl/subscriptions$queryParam',
+        if (sinceTimestamp == 0) '$baseUrl/subscriptions?since=0',
+      ];
+      if (baseUrl.contains('/index.php/')) {
+        urlsToTry.add('${baseUrl.replaceFirst('/index.php/', '/')}/subscriptions$queryParam');
+      } else if (!baseUrl.contains('gpodder.net')) {
+        urlsToTry.add('$baseUrl/index.php/apps/gpoddersync/subscriptions$queryParam');
+      }
+      final cleanServerUrl = serverUrl.trim().endsWith('/')
+          ? serverUrl.trim().substring(0, serverUrl.trim().length - 1)
+          : serverUrl.trim();
+      urlsToTry.add('$cleanServerUrl/api/2/subscriptions/$username.json$queryParam');
+
+      Response? response;
+      DioException? lastDioException;
+
+      for (final targetUrl in urlsToTry) {
+        try {
+          final res = await _dio.get(targetUrl, options: options);
+          if (res.statusCode == 200 && res.data != null) {
+            dynamic data = res.data;
+            if (data is String) {
+              final trimmed = data.trim();
+              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                try {
+                  data = jsonDecode(trimmed);
+                } catch (_) {
+                  data = null;
+                }
+              } else {
+                data = null;
+              }
+            }
+            if (data is Map || data is List) {
+              response = res;
+              break;
+            }
+          }
+        } on DioException catch (dioErr) {
+          lastDioException = dioErr;
+          if (dioErr.response?.statusCode == 404 ||
+              dioErr.response?.statusCode == 400 ||
+              dioErr.response?.statusCode == 405) {
+            continue;
+          }
+          rethrow;
+        }
+      }
+
+      if (response == null) {
+        if (lastDioException != null) {
+          throw lastDioException;
+        }
+        lastError = 'Failed to fetch subscriptions from server';
+        return null;
+      }
 
       if (response.statusCode == 200 && response.data != null) {
         dynamic decoded = response.data;
@@ -217,27 +281,43 @@ class GPodderApiClient {
   }) async {
     if (addUrls.isEmpty && removeUrls.isEmpty) return true;
 
-    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
-    if (!isOnline) {
-      return false;
-    }
-
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final payload = {
         'add': addUrls,
         'remove': removeUrls,
       };
-      final response = await _dio.post(
+      final urlsToTry = <String>[
+        '$baseUrl/subscription_change/create',
         '$baseUrl/subscriptions',
-        data: payload,
-        options: _getAuthOptions(username, password),
-      );
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      ];
+      Response? response;
+      DioException? lastDioException;
+      for (final targetUrl in urlsToTry) {
+        try {
+          final res = await _dio.post(
+            targetUrl,
+            data: payload,
+            options: _getAuthOptions(username, password),
+          );
+          if (res.statusCode == 200 || res.statusCode == 201) {
+            response = res;
+            break;
+          }
+        } on DioException catch (dioErr) {
+          lastDioException = dioErr;
+          if (dioErr.response?.statusCode == 404) {
+            continue;
+          }
+          rethrow;
+        }
+      }
+      if (response != null) {
         lastError = null;
         return true;
       }
-      lastError = 'Failed to upload subscriptions (HTTP ${response.statusCode})';
+      if (lastDioException != null) throw lastDioException;
+      lastError = 'Failed to upload subscriptions';
       return false;
     } catch (e) {
       if (kDebugMode) print('uploadSubscriptionChanges error: $e');
@@ -253,40 +333,133 @@ class GPodderApiClient {
     required String password,
     int sinceTimestamp = 0,
   }) async {
-    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
-    if (!isOnline) {
+    lastEpisodeActionTimestamp = null;
+    if (serverUrl.trim().isEmpty || username.trim().isEmpty || password.trim().isEmpty) {
+      lastError = 'Server credentials not configured.';
       return [];
     }
 
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
-      final response = await _dio.get(
-        '$baseUrl/episode_action?since=$sinceTimestamp',
-        options: _getAuthOptions(username, password),
+      final options = _getAuthOptions(username, password).copyWith(
+        receiveTimeout: const Duration(seconds: 90),
       );
 
-      if (response.statusCode == 200 && response.data != null) {
-        dynamic decoded = response.data;
-        if (decoded is String) {
-          try {
-            decoded = jsonDecode(decoded);
-          } catch (_) {}
-        }
-
-        List rawActions = [];
-        if (decoded is Map) {
-          rawActions = (decoded['actions'] as List?) ?? [];
-        } else if (decoded is List) {
-          rawActions = decoded;
-        }
-
-        lastError = null;
-        return rawActions
-            .map((item) => GPodderAction.fromMap(Map<String, dynamic>.from(item as Map)))
-            .toList();
+      final queryParam = sinceTimestamp > 0 ? '?since=$sinceTimestamp' : '';
+      final urlsToTry = <String>[
+        '$baseUrl/episode_action$queryParam',
+        if (sinceTimestamp == 0) '$baseUrl/episode_action?since=0',
+      ];
+      if (baseUrl.contains('/index.php/')) {
+        urlsToTry.add('${baseUrl.replaceFirst('/index.php/', '/')}/episode_action$queryParam');
+      } else if (!baseUrl.contains('gpodder.net')) {
+        urlsToTry.add('$baseUrl/index.php/apps/gpoddersync/episode_action$queryParam');
       }
-      lastError = 'Failed to fetch episode actions (HTTP ${response.statusCode})';
-      return [];
+      final cleanServerUrl = serverUrl.trim().endsWith('/')
+          ? serverUrl.trim().substring(0, serverUrl.trim().length - 1)
+          : serverUrl.trim();
+      urlsToTry.add('$cleanServerUrl/api/2/episodes/$username.json$queryParam');
+
+      Response? response;
+      DioException? lastDioException;
+
+      for (final targetUrl in urlsToTry) {
+        try {
+          final res = await _dio.get(targetUrl, options: options);
+          if (res.statusCode == 200 && res.data != null) {
+            dynamic data = res.data;
+            if (data is String) {
+              final trimmed = data.trim();
+              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                try {
+                  data = jsonDecode(trimmed);
+                } catch (_) {
+                  data = null;
+                }
+              } else {
+                data = null;
+              }
+            }
+            if (data is Map || data is List) {
+              response = res;
+              break;
+            }
+          }
+        } on DioException catch (dioErr) {
+          lastDioException = dioErr;
+          if (dioErr.response?.statusCode == 404 ||
+              dioErr.response?.statusCode == 400 ||
+              dioErr.response?.statusCode == 405) {
+            continue;
+          }
+          rethrow;
+        }
+      }
+
+      if (response == null) {
+        if (lastDioException != null) {
+          throw lastDioException;
+        }
+        lastError = 'Failed to fetch episode actions from server';
+        return [];
+      }
+
+      dynamic decoded = response.data;
+      if (decoded is String) {
+        try {
+          decoded = jsonDecode(decoded);
+        } catch (_) {}
+      }
+
+      List rawActions = [];
+      if (decoded is List) {
+        rawActions = decoded;
+      } else if (decoded is Map) {
+        rawActions = (decoded['actions'] as List?) ??
+            (decoded['episode_actions'] as List?) ??
+            (decoded['episodeActions'] as List?) ??
+            (decoded['data'] as List?) ??
+            [];
+        final tsVal = decoded['timestamp'];
+        if (tsVal is num) {
+          lastEpisodeActionTimestamp = tsVal.toInt();
+        } else if (tsVal != null) {
+          final s = tsVal.toString().trim();
+          final parsedNum = num.tryParse(s);
+          if (parsedNum != null) {
+            lastEpisodeActionTimestamp = parsedNum.toInt();
+          }
+        }
+      }
+
+      lastError = null;
+      final actions = <GPodderAction>[];
+      for (final item in rawActions) {
+        try {
+          dynamic mapItem = item;
+          if (mapItem is String) {
+            try {
+              mapItem = jsonDecode(mapItem);
+            } catch (_) {}
+          }
+          if (mapItem is Map) {
+            actions.add(GPodderAction.fromMap(Map<String, dynamic>.from(mapItem)));
+          }
+        } catch (e) {
+          if (kDebugMode) print('Error parsing individual action: $e');
+        }
+      }
+
+      if (lastEpisodeActionTimestamp == null && actions.isNotEmpty) {
+        final maxActionTs = actions
+            .map((a) => a.timestamp.millisecondsSinceEpoch ~/ 1000)
+            .fold(0, (max, ts) => ts > max ? ts : max);
+        if (maxActionTs > 0) {
+          lastEpisodeActionTimestamp = maxActionTs;
+        }
+      }
+
+      return actions;
     } catch (e) {
       if (kDebugMode) print('fetchEpisodeActions error: $e');
       lastError = AppErrorFormatter.format(e);
@@ -303,24 +476,40 @@ class GPodderApiClient {
   }) async {
     if (actions.isEmpty) return true;
 
-    final isOnline = await pingServer(serverUrl: serverUrl, username: username, password: password);
-    if (!isOnline) {
-      return false;
-    }
-
     try {
       final baseUrl = _formatBaseUrl(serverUrl);
       final payload = actions.map((a) => a.toApiJson()).toList();
-      final response = await _dio.post(
+      final urlsToTry = <String>[
         '$baseUrl/episode_action/create',
-        data: payload,
-        options: _getAuthOptions(username, password),
-      );
-      if (response.statusCode == 200 || response.statusCode == 201) {
+        '$baseUrl/episode_actions',
+      ];
+      Response? response;
+      DioException? lastDioException;
+      for (final targetUrl in urlsToTry) {
+        try {
+          final res = await _dio.post(
+            targetUrl,
+            data: payload,
+            options: _getAuthOptions(username, password),
+          );
+          if (res.statusCode == 200 || res.statusCode == 201) {
+            response = res;
+            break;
+          }
+        } on DioException catch (dioErr) {
+          lastDioException = dioErr;
+          if (dioErr.response?.statusCode == 404) {
+            continue;
+          }
+          rethrow;
+        }
+      }
+      if (response != null) {
         lastError = null;
         return true;
       }
-      lastError = 'Failed to upload episode actions (HTTP ${response.statusCode})';
+      if (lastDioException != null) throw lastDioException;
+      lastError = 'Failed to upload episode actions';
       return false;
     } catch (e) {
       if (kDebugMode) print('uploadEpisodeActions error: $e');
