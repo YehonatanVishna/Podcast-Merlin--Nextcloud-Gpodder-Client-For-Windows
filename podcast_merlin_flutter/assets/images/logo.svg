@@ -1,0 +1,323 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Crisp Vector Glow Filters -->
+    <filter id="neon-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="blur1"/>
+      <feGaussianBlur stdDeviation="8" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="star-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="drop-shadow-soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#020408" flood-opacity="0.85"/>
+    </filter>
+
+    <!-- Gradients -->
+    <linearGradient id="squircle-bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1c283a"/>
+      <stop offset="45%" stop-color="#131c2b"/>
+      <stop offset="100%" stop-color="#060912"/>
+    </linearGradient>
+
+    <linearGradient id="squircle-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4d739c" stop-opacity="0.65"/>
+      <stop offset="35%" stop-color="#2a3f56" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#060912" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <radialGradient id="disc-bg-grad" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#121b29"/>
+      <stop offset="65%" stop-color="#0a101a"/>
+      <stop offset="100%" stop-color="#050810"/>
+    </radialGradient>
+
+    <linearGradient id="disc-top-cyan-rim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#386488" stop-opacity="0.85"/>
+      <stop offset="45%" stop-color="#1e3a52" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#050810" stop-opacity="0.0"/>
+    </linearGradient>
+
+    <radialGradient id="ambient-coral-halo" cx="50%" cy="50%" r="45%">
+      <stop offset="0%" stop-color="#ff2a4b" stop-opacity="0.38"/>
+      <stop offset="40%" stop-color="#d90429" stop-opacity="0.2"/>
+      <stop offset="85%" stop-color="#66000e" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Headband Gradients -->
+    <linearGradient id="headband-outer-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff526d"/>
+      <stop offset="35%" stop-color="#e60b2b"/>
+      <stop offset="70%" stop-color="#990014"/>
+      <stop offset="100%" stop-color="#4d000a"/>
+    </linearGradient>
+
+    <linearGradient id="headband-inner-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff7a90"/>
+      <stop offset="50%" stop-color="#ff2a4b"/>
+      <stop offset="100%" stop-color="#800010"/>
+    </linearGradient>
+
+    <linearGradient id="specular-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="30%" stop-color="#ffcdd7" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#ff1a3c" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Earcup 3D Radial Gradients -->
+    <radialGradient id="earcup-shell-left" cx="28%" cy="22%" r="78%">
+      <stop offset="0%" stop-color="#ffccd5"/>
+      <stop offset="20%" stop-color="#ff4d68"/>
+      <stop offset="50%" stop-color="#cc001a"/>
+      <stop offset="80%" stop-color="#59000c"/>
+      <stop offset="100%" stop-color="#1f0004"/>
+    </radialGradient>
+
+    <radialGradient id="earcup-shell-right" cx="72%" cy="22%" r="78%">
+      <stop offset="0%" stop-color="#ffccd5"/>
+      <stop offset="20%" stop-color="#ff4d68"/>
+      <stop offset="50%" stop-color="#cc001a"/>
+      <stop offset="80%" stop-color="#59000c"/>
+      <stop offset="100%" stop-color="#1f0004"/>
+    </radialGradient>
+
+    <radialGradient id="earcup-cavity-grad" cx="45%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#150106"/>
+      <stop offset="75%" stop-color="#070003"/>
+      <stop offset="100%" stop-color="#020001"/>
+    </radialGradient>
+
+    <linearGradient id="earcup-neon-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffa0b2"/>
+      <stop offset="50%" stop-color="#ff2a4b"/>
+      <stop offset="100%" stop-color="#b30018"/>
+    </linearGradient>
+
+    <!-- Hat Cone 3D Gradient -->
+    <linearGradient id="hat-cone-lit-grad" x1="0%" y1="30%" x2="100%" y2="70%">
+      <stop offset="0%" stop-color="#ff6b85"/>
+      <stop offset="35%" stop-color="#e60b2b"/>
+      <stop offset="70%" stop-color="#b30018"/>
+      <stop offset="100%" stop-color="#66000e"/>
+    </linearGradient>
+
+    <linearGradient id="hat-cone-shadow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#800012"/>
+      <stop offset="50%" stop-color="#4a000a"/>
+      <stop offset="100%" stop-color="#1f0004"/>
+    </linearGradient>
+
+    <linearGradient id="hat-left-neon-stroke" x1="0%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#ff2a4b"/>
+      <stop offset="50%" stop-color="#ff7373"/>
+      <stop offset="100%" stop-color="#ffa585"/>
+    </linearGradient>
+
+    <linearGradient id="hat-gold-band" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fff0b3"/>
+      <stop offset="25%" stop-color="#ffcc00"/>
+      <stop offset="55%" stop-color="#ff6600"/>
+      <stop offset="80%" stop-color="#ff3366"/>
+      <stop offset="100%" stop-color="#ffaa00"/>
+    </linearGradient>
+
+    <linearGradient id="celestial-gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#ffe082"/>
+      <stop offset="70%" stop-color="#ffb300"/>
+      <stop offset="100%" stop-color="#ff8f00"/>
+    </linearGradient>
+
+    <linearGradient id="brim-surface-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff6680"/>
+      <stop offset="35%" stop-color="#e60b2b"/>
+      <stop offset="75%" stop-color="#730010"/>
+      <stop offset="100%" stop-color="#330007"/>
+    </linearGradient>
+
+    <linearGradient id="brim-under-shadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#210004"/>
+      <stop offset="60%" stop-color="#0a0001"/>
+      <stop offset="100%" stop-color="#030000"/>
+    </linearGradient>
+
+    <linearGradient id="wave-bar-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffe0d6"/>
+      <stop offset="25%" stop-color="#ff526d"/>
+      <stop offset="70%" stop-color="#ff1a3c"/>
+      <stop offset="100%" stop-color="#b30018"/>
+    </linearGradient>
+
+    <!-- Reusable Gold Stars -->
+    <g id="star-gold-large">
+      <path d="M 0,-14 Q 0,0 14,0 Q 0,0 0,14 Q 0,0 -14,0 Q 0,0 0,-14 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M 0,-9 Q 0,0 9,0 Q 0,0 0,9 Q 0,0 -9,0 Q 0,0 0,-9 Z" fill="#ffffff" opacity="0.75"/>
+    </g>
+
+    <g id="star-gold-small">
+      <path d="M 0,-9 Q 0,0 9,0 Q 0,0 0,9 Q 0,0 -9,0 Q 0,0 0,-9 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M 0,-6 Q 0,0 6,0 Q 0,0 0,6 Q 0,0 -6,0 Q 0,0 0,-6 Z" fill="#ffffff" opacity="0.8"/>
+    </g>
+  </defs>
+
+  <!-- 1. SQUIRCLE APP ICON CONTAINER -->
+  <rect x="128" y="124" width="768" height="772" rx="170" ry="170" fill="url(#squircle-bg-grad)"/>
+  <rect x="128" y="124" width="768" height="772" rx="170" ry="170" fill="none" stroke="url(#squircle-rim)" stroke-width="2.5"/>
+
+  <!-- 2. CENTRAL RECESSED DISC & LIGHTING -->
+  <circle cx="512" cy="510" r="330" fill="url(#ambient-coral-halo)"/>
+  <circle cx="512" cy="510" r="320" fill="url(#disc-bg-grad)" stroke="#162233" stroke-width="2"/>
+  <path d="M 205,420 A 320,320 0 0,1 819,420 A 320,250 0 0,0 205,420 Z" fill="url(#disc-top-cyan-rim)" opacity="0.85"/>
+  <path d="M 320,760 A 320,320 0 0,0 800,550" fill="none" stroke="#800e1d" stroke-width="8" opacity="0.45" filter="url(#soft-glow)"/>
+
+  <!-- 3. HEADBAND (TALL CIRCULAR ARCH REACHING Y=180) -->
+  <g filter="url(#drop-shadow-soft)">
+    <path d="M 260,490 C 260,180 764,180 764,490" fill="none" stroke="#ff2a4b" stroke-width="24" opacity="0.25" filter="url(#neon-glow)"/>
+    <path d="M 260,490 C 260,185 764,185 764,490" fill="none" stroke="url(#headband-outer-grad)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M 264,485 C 264,188 760,188 760,485" fill="none" stroke="url(#specular-light)" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 282,495 C 287,215 737,215 742,495" fill="none" stroke="url(#headband-inner-grad)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M 282,495 C 287,215 737,215 742,495" fill="none" stroke="#ffe0e6" stroke-width="2" opacity="0.85"/>
+    <path d="M 260,485 C 260,515 272,545 288,570 C 298,585 310,598 322,608" fill="none" stroke="url(#headband-outer-grad)" stroke-width="16" stroke-linecap="round"/>
+    <path d="M 764,485 C 764,515 752,545 736,570 C 726,585 714,598 702,608" fill="none" stroke="url(#headband-outer-grad)" stroke-width="16" stroke-linecap="round"/>
+  </g>
+
+  <!-- 4. EARCUPS -->
+  <!-- LEFT EARCUP -->
+  <g transform="translate(356, 617) rotate(-18)" filter="url(#drop-shadow-soft)">
+    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4" filter="url(#neon-glow)"/>
+    <ellipse cx="0" cy="0" rx="76" ry="118" fill="url(#earcup-shell-left)"/>
+    <ellipse cx="-3" cy="-3" rx="72" ry="112" fill="none" stroke="url(#specular-light)" stroke-width="4.5" opacity="0.85"/>
+    <ellipse cx="2" cy="0" rx="52" ry="84" fill="url(#earcup-cavity-grad)" stroke="#3a0008" stroke-width="2.5"/>
+    <ellipse cx="2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7" filter="url(#neon-glow)"/>
+    <ellipse cx="2" cy="0" rx="40" ry="66" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.95"/>
+    <g transform="translate(2, 0)">
+      <use href="#star-gold-large"/>
+    </g>
+  </g>
+
+  <!-- RIGHT EARCUP -->
+  <g transform="translate(668, 617) rotate(18)" filter="url(#drop-shadow-soft)">
+    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4" filter="url(#neon-glow)"/>
+    <ellipse cx="0" cy="0" rx="76" ry="118" fill="url(#earcup-shell-right)"/>
+    <ellipse cx="3" cy="-3" rx="72" ry="112" fill="none" stroke="url(#specular-light)" stroke-width="4.5" opacity="0.85"/>
+    <ellipse cx="-2" cy="0" rx="52" ry="84" fill="url(#earcup-cavity-grad)" stroke="#3a0008" stroke-width="2.5"/>
+    <ellipse cx="-2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7" filter="url(#neon-glow)"/>
+    <ellipse cx="-2" cy="0" rx="40" ry="66" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.95"/>
+    <g transform="translate(-2, 0)">
+      <use href="#star-gold-large"/>
+    </g>
+  </g>
+
+  <!-- 5. MAJESTIC WIZARD HAT -->
+  <g filter="url(#drop-shadow-soft)">
+    <!-- Ambient Red Glow Behind Hat Cone -->
+    <ellipse cx="512" cy="340" rx="160" ry="120" fill="#ff2a4b" opacity="0.22" filter="url(#soft-glow)"/>
+
+    <!-- HAT CONE LIT FACE -->
+    <path d="M 405,470 
+             C 415,395 440,305 485,248 
+             C 505,225 530,220 550,228 
+             C 540,280 535,365 545,470 
+             Z" 
+          fill="url(#hat-cone-lit-grad)"/>
+
+    <!-- HAT CONE SHADOW FACE & FOLD TIP -->
+    <path d="M 550,228 
+             C 575,238 610,250 628,268 
+             C 638,282 638,305 632,328 
+             C 620,318 600,318 588,338 
+             C 576,358 575,415 618,470 
+             L 545,470 
+             C 535,365 540,280 550,228 Z" 
+          fill="url(#hat-cone-shadow-grad)"/>
+
+    <!-- Soft Vertical Crease / Fold Shadow Line -->
+    <path d="M 550,228 C 535,280 535,365 545,470" fill="none" stroke="#150003" stroke-width="4" opacity="0.5"/>
+
+    <!-- Left Silhouette Edge Bright Neon Orange Stroke -->
+    <path d="M 405,470 C 415,395 440,305 485,248 C 505,225 530,220 550,228" fill="none" stroke="url(#hat-left-neon-stroke)" stroke-width="5.5" filter="url(#soft-glow)"/>
+
+    <!-- TASSEL ATTACHED TO FOLDED TIP -->
+    <circle cx="632" cy="328" r="5" fill="#ffcc00"/>
+    <path d="M 632,333 Q 635,348 632,362" fill="none" stroke="#ffb300" stroke-width="2.5"/>
+    <circle cx="632" cy="364" r="6" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+    <path d="M 625,370 L 632,390 L 639,370 Z" fill="#ff2a4b"/>
+    <path d="M 627,370 L 632,390 L 637,370 Z" fill="url(#celestial-gold-grad)" opacity="0.75"/>
+
+    <!-- METALLIC GOLD BASE BAND -->
+    <path d="M 402,465 Q 512,445 624,465" fill="none" stroke="url(#hat-gold-band)" stroke-width="14" stroke-linecap="round" filter="url(#neon-glow)"/>
+    <path d="M 402,465 Q 512,445 624,465" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" opacity="0.95"/>
+
+    <!-- CELESTIAL MOON & STARS -->
+    <!-- Crescent Moon facing RIGHT ) -->
+    <g transform="translate(515, 348) rotate(12)">
+      <path d="M -9,-25 C 16,-15 16,15 -9,25 C 7,15 7,-15 -9,-25 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M -7,-23 C 14,-13 14,13 -7,23 C 5,13 5,-13 -7,-23 Z" fill="#ffffff" opacity="0.85"/>
+    </g>
+
+    <!-- 4 Stars on Hat Cone -->
+    <g transform="translate(455, 375)"><use href="#star-gold-large"/></g>
+    <g transform="translate(480, 295)"><use href="#star-gold-small"/></g>
+    <g transform="translate(530, 285)"><use href="#star-gold-small"/></g>
+    <g transform="translate(450, 325)"><use href="#star-gold-small"/></g>
+
+    <!-- DYNAMIC 3D CURVED HAT BRIM -->
+    <!-- Underside Shadow Area -->
+    <path d="M 267,475 
+             C 340,488 425,495 512,495 
+             C 599,495 684,488 756,475 
+             C 684,545 599,555 512,555 
+             C 425,555 340,545 267,475 Z" 
+          fill="url(#brim-under-shadow)"/>
+
+    <!-- Main Brim Surface -->
+    <path d="M 267,475 
+             C 340,488 425,495 512,495 
+             C 599,495 684,488 756,475 
+             C 684,515 599,530 512,530 
+             C 425,530 340,515 267,475 Z" 
+          fill="url(#brim-surface-grad)"/>
+
+    <!-- Specular Top Rim Edge Highlight -->
+    <path d="M 267,475 C 340,488 425,495 512,495 C 599,495 684,488 756,475" fill="none" stroke="#ffa0b2" stroke-width="3" opacity="0.9"/>
+
+    <!-- Front Neon Edge Lip -->
+    <path d="M 267,475 C 340,515 425,530 512,530 C 599,530 684,515 756,475" fill="none" stroke="#ff2a4b" stroke-width="6.5" filter="url(#neon-glow)"/>
+    <path d="M 267,475 C 340,515 425,530 512,530 C 599,530 684,515 756,475" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.95"/>
+  </g>
+
+  <!-- 6. AUDIO WAVEFORM -->
+  <g transform="translate(512, 640)" filter="url(#drop-shadow-soft)">
+    <ellipse cx="0" cy="0" rx="75" ry="32" fill="#ff2a4b" opacity="0.35" filter="url(#soft-glow)"/>
+    <rect x="-4.5" y="-38" width="9" height="76" rx="4.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+    <rect x="-18" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+    <rect x="10" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+    <rect x="-30.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+    <rect x="23.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+    <rect x="-42" y="-15" width="6" height="30" rx="3" fill="url(#wave-bar-grad)"/>
+    <rect x="36" y="-15" width="6" height="30" rx="3" fill="url(#wave-bar-grad)"/>
+    <rect x="-52.5" y="-9" width="5" height="18" rx="2.5" fill="url(#wave-bar-grad)"/>
+    <rect x="47.5" y="-9" width="5" height="18" rx="2.5" fill="url(#wave-bar-grad)"/>
+    <path d="M -64,-6 L -68,0 L -64,6" fill="none" stroke="url(#wave-bar-grad)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 64,-6 L 68,0 L 64,6" fill="none" stroke="url(#wave-bar-grad)" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>
