@@ -37,7 +37,13 @@ class Episode {
 
   bool get isFinished {
     if (isPlayed) return true;
-    if (duration > 0 && position >= (duration - 10)) return true;
+    if (position > 0 && duration > 0) {
+      if (duration > 60) {
+        return (duration - position) <= 60;
+      } else {
+        return position >= (duration > 10 ? duration - 10 : duration);
+      }
+    }
     return false;
   }
 

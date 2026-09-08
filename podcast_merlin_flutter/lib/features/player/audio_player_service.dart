@@ -197,6 +197,27 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     }
 
+    final bool wasFinished = epToPlay.isFinished;
+    if (wasFinished) {
+      epToPlay = epToPlay.copyWith(position: 0, isPlayed: false);
+      await _db.updateEpisodePlaybackState(epToPlay.mediaUrl, 0, isPlayed: false);
+      _positionUpdateController.add((mediaUrl: epToPlay.mediaUrl, position: 0, isPlayed: false));
+      if (epToPlay.podcastRss.isNotEmpty) {
+        final resetAction = GPodderAction(
+          podcast: epToPlay.podcastRss,
+          episode: epToPlay.mediaUrl,
+          guid: epToPlay.guid,
+          action: 'play',
+          timestamp: DateTime.now(),
+          position: 0,
+          started: 0,
+          total: epToPlay.duration,
+        );
+        await _db.enqueueAction(resetAction);
+        _syncService.pushPendingActions().catchError((_) => false);
+      }
+    }
+
     _currentEpisode = epToPlay;
     _lastSyncedPosition = -1; // Reset stale position marker
 
@@ -254,14 +275,17 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       androidCompactActionIndices: const [0, 1, 2],
       processingState: AudioProcessingState.loading,
       playing: true,
+      updatePosition: Duration(seconds: epToPlay.position),
     );
     playbackState.add(initialLoadingState);
     LinuxMprisService.instance.updateState(initialLoadingState, newItem);
 
     try {
       await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
-      if (epToPlay.position > 0 && epToPlay.position < (epToPlay.duration - 5)) {
+      if (epToPlay.position > 0 && !epToPlay.isFinished && epToPlay.position < (epToPlay.duration - 5)) {
         await _player.seek(Duration(seconds: epToPlay.position));
+      } else {
+        await _player.seek(Duration.zero);
       }
       await play();
       _startPeriodicPositionSync();
@@ -364,7 +388,18 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     if (currentSec == _lastSyncedPosition) return;
     _lastSyncedPosition = currentSec;
 
-    final isPlayed = (totalSec > 0 && currentSec >= (totalSec - 10));
+    bool isPlayed = false;
+    if (totalSec > 0 && currentSec > 0) {
+      if (totalSec > 60) {
+        if ((totalSec - currentSec) <= 60) {
+          isPlayed = true;
+        }
+      } else {
+        if (currentSec >= (totalSec > 10 ? totalSec - 10 : totalSec)) {
+          isPlayed = true;
+        }
+      }
+    }
     _currentEpisode = _currentEpisode!.copyWith(position: currentSec, isPlayed: isPlayed);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, currentSec, isPlayed: isPlayed);
     _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: currentSec, isPlayed: isPlayed));

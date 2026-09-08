@@ -433,9 +433,9 @@ class DatabaseHelper {
     List<dynamic> whereArgs = [podcastId];
 
     if (filter == EpisodeFilter.unplayed) {
-      whereClause += ' AND e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position < (e.duration - 10))';
+      whereClause += ' AND e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position = 0 OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.finished) {
-      whereClause += ' AND (e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position >= (e.duration - 10)))';
+      whereClause += ' AND (e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position > 0 AND ((e.duration > 60 AND (e.duration - e.position) <= 60) OR (e.duration <= 60 AND e.position >= (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END)))))';
     }
 
     final query = '''
@@ -463,9 +463,9 @@ class DatabaseHelper {
     List<dynamic> whereArgs = [];
 
     if (filter == EpisodeFilter.unplayed) {
-      whereClause = 'e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position < (e.duration - 10))';
+      whereClause = 'e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position = 0 OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.finished) {
-      whereClause = '(e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position >= (e.duration - 10)))';
+      whereClause = '(e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position > 0 AND ((e.duration > 60 AND (e.duration - e.position) <= 60) OR (e.duration <= 60 AND e.position >= (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END)))))';
     }
 
     final query = '''
@@ -933,11 +933,11 @@ class DatabaseHelper {
             actType == 'finished' ||
             actType == 'completed') {
           isActPlayed = true;
-        } else if (total > 0 && actPos >= (total - 15)) {
+        } else if (total > 0 && actPos > 0 && (total > 60 ? (total - actPos) <= 60 : actPos >= (total > 10 ? total - 10 : total))) {
           isActPlayed = true;
         } else if (total > 0 && actPos >= (total * 0.95).round()) {
           isActPlayed = true;
-        } else if (act.started > 0 && act.started == actPos && epDuration > 0 && actPos >= (epDuration - 15)) {
+        } else if (act.started > 0 && act.started == actPos && epDuration > 0 && actPos >= (epDuration > 60 ? epDuration - 60 : epDuration - 15)) {
           isActPlayed = true;
         } else if (act.started > 0 && actPos > 0 && act.started == actPos && (total <= 0 || actPos >= total)) {
           // AntennaPod mark as played often sets started == position == duration

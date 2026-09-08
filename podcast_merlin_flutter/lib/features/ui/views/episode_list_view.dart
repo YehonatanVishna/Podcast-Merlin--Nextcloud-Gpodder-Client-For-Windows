@@ -353,6 +353,10 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   }
 
   void _showEpisodeDetailsModal(BuildContext context, Episode ep) {
+    final currentEpisode = ref.read(audioHandlerProvider).currentEpisode;
+    final isCurrent = currentEpisode?.mediaUrl == ep.mediaUrl;
+    final effectiveEp = isCurrent ? (currentEpisode ?? ep) : ep;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -369,22 +373,55 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             controller: scrollController,
             children: [
               Text(
-                ep.title,
+                effectiveEp.title,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              if (ep.publishedAt != null)
-                Text(
-                  'Published: ${DateFormat.yMMMMd().format(ep.publishedAt!)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+              Row(
+                children: [
+                  if (effectiveEp.publishedAt != null)
+                    Text(
+                      'Published: ${DateFormat.yMMMMd().format(effectiveEp.publishedAt!)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (effectiveEp.isFinished) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            size: 12,
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Played',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Play Episode'),
+                icon: Icon(effectiveEp.isFinished ? Icons.replay : Icons.play_arrow),
+                label: Text(effectiveEp.isFinished ? 'Replay Episode' : 'Play Episode'),
                 onPressed: () {
                   Navigator.pop(modalCtx);
-                  ref.read(audioHandlerProvider).playEpisode(ep);
+                  ref.read(audioHandlerProvider).playEpisode(effectiveEp);
                 },
               ),
               const SizedBox(height: 16),
@@ -394,7 +431,7 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
               ),
               const SizedBox(height: 8),
               PurifiedHtmlText(
-                htmlData: ep.description,
+                htmlData: effectiveEp.description,
                 textStyle: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
@@ -455,6 +492,13 @@ class _EpisodeTile extends StatelessWidget {
         bool isFinished = episode.isFinished;
 
         if (isCurrent) {
+          bool isCurrentEpisodePlayed = false;
+          try {
+            if (audioHandler?.currentEpisode != null) {
+              isCurrentEpisodePlayed = audioHandler.currentEpisode.isPlayed;
+            }
+          } catch (_) {}
+
           if (playbackState != null) {
             displayPosition = playbackState.position.inSeconds;
           } else {
@@ -472,8 +516,17 @@ class _EpisodeTile extends StatelessWidget {
           if (displayDuration <= 0 && handlerDuration > 0) {
             displayDuration = handlerDuration;
           }
-          if (displayDuration > 0 && displayPosition >= (displayDuration - 10)) {
+
+          if (isCurrentEpisodePlayed) {
             isFinished = true;
+          } else if (displayPosition > 0 && displayDuration > 0) {
+            if (displayDuration > 60) {
+              isFinished = (displayDuration - displayPosition) <= 60;
+            } else {
+              isFinished = displayPosition >= (displayDuration > 10 ? displayDuration - 10 : displayDuration);
+            }
+          } else {
+            isFinished = false;
           }
         }
 
@@ -482,15 +535,36 @@ class _EpisodeTile extends StatelessWidget {
           progressPercentage = (displayPosition / displayDuration).clamp(0.0, 1.0);
         }
 
-        final showProgress = displayPosition > 0 && !isFinished;
+        final showProgress = (displayPosition > 0 || isCurrent) && !isFinished;
 
-        return ListTile(
+        final tile = ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: AppCachedImage(
-            imageUrl: episode.imageUrl,
-            width: 56,
-            height: 56,
-            borderRadius: BorderRadius.circular(6),
+          leading: Stack(
+            children: [
+              AppCachedImage(
+                imageUrl: episode.imageUrl,
+                width: 56,
+                height: 56,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              if (isFinished)
+                Positioned(
+                  right: 2,
+                  bottom: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_circle,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+            ],
           ),
           title: Text(
             episode.title,
@@ -498,7 +572,9 @@ class _EpisodeTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-              color: isCurrent ? Theme.of(context).colorScheme.primary : null,
+              color: isCurrent
+                  ? Theme.of(context).colorScheme.primary
+                  : (isFinished ? Theme.of(context).disabledColor : null),
             ),
           ),
           subtitle: Column(
@@ -507,19 +583,44 @@ class _EpisodeTile extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
+                  if (isFinished) ...[
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Played • ',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
                   Text(
                     episode.publishedAt != null
                         ? DateFormat.yMMMd().format(episode.publishedAt!)
                         : 'Unknown Date',
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: isFinished ? Theme.of(context).disabledColor : null,
+                        ),
                   ),
-                  if (displayPosition > 0 && displayDuration > 0) ...[
+                  if ((displayPosition > 0 || isCurrent) && displayDuration > 0 && !isFinished) ...[
                     const SizedBox(width: 8),
                     Text(
                       '• ${_formatDuration(displayPosition)} / ${_formatDuration(displayDuration)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: isCurrent ? Theme.of(context).colorScheme.primary : null,
                             fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                    ),
+                  ] else if (displayDuration > 0) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '• ${_formatDuration(displayDuration)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isFinished ? Theme.of(context).disabledColor : null,
                           ),
                     ),
                   ],
@@ -537,13 +638,28 @@ class _EpisodeTile extends StatelessWidget {
           ),
           trailing: IconButton(
             icon: Icon(
-              isCurrent ? Icons.volume_up : Icons.play_arrow_rounded,
+              isCurrent
+                  ? Icons.volume_up
+                  : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
               size: 32,
-              color: Theme.of(context).colorScheme.primary,
+              color: isCurrent
+                  ? Theme.of(context).colorScheme.primary
+                  : (isFinished
+                      ? Theme.of(context).colorScheme.outline
+                      : Theme.of(context).colorScheme.primary),
             ),
+            tooltip: isCurrent
+                ? 'Now playing'
+                : (isFinished ? 'Replay episode' : 'Play episode'),
             onPressed: onPlay,
           ),
           onTap: onTap,
+        );
+
+        return AnimatedOpacity(
+          duration: const Duration(milliseconds: 250),
+          opacity: isFinished ? 0.45 : 1.0,
+          child: tile,
         );
       },
     );
