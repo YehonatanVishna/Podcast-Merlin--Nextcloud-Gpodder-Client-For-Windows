@@ -1,4 +1,4 @@
-enum EpisodeFilter { all, unplayed, finished }
+enum EpisodeFilter { all, unplayed, inProgress, starred, finished, downloaded }
 
 class Episode {
   final int? id;
@@ -11,6 +11,7 @@ class Episode {
   final int duration; // in seconds
   final int position; // in seconds
   final bool isPlayed;
+  final bool isStarred;
   final String imageUrl;
   final String podcastRss;
 
@@ -25,6 +26,7 @@ class Episode {
     this.duration = 0,
     this.position = 0,
     this.isPlayed = false,
+    this.isStarred = false,
     required this.imageUrl,
     required this.podcastRss,
   });
@@ -58,6 +60,7 @@ class Episode {
     int? duration,
     int? position,
     bool? isPlayed,
+    bool? isStarred,
     String? imageUrl,
     String? podcastRss,
   }) {
@@ -72,6 +75,7 @@ class Episode {
       duration: duration ?? this.duration,
       position: position ?? this.position,
       isPlayed: isPlayed ?? this.isPlayed,
+      isStarred: isStarred ?? this.isStarred,
       imageUrl: imageUrl ?? this.imageUrl,
       podcastRss: podcastRss ?? this.podcastRss,
     );
@@ -89,6 +93,7 @@ class Episode {
       'duration': duration,
       'position': position,
       'isPlayed': isPlayed ? 1 : 0,
+      'isStarred': isStarred ? 1 : 0,
       'imageUrl': imageUrl,
     };
   }
@@ -124,6 +129,7 @@ class Episode {
   factory Episode.fromMap(Map<String, dynamic> map) {
     final pubDateVal = map['pubDate'] ?? map['published_at'];
     final isPlayedVal = map['isPlayed'] ?? map['is_played'];
+    final isStarredVal = map['isStarred'] ?? map['is_starred'];
     return Episode(
       id: _parseOptionalInt(map['id']),
       podcastId: _parseOptionalInt(map['podcastId'] ?? map['podcast_id']),
@@ -135,6 +141,7 @@ class Episode {
       duration: _parseInt(map['duration']),
       position: _parseInt(map['position']),
       isPlayed: _parseBool(isPlayedVal),
+      isStarred: _parseBool(isStarredVal),
       imageUrl: (map['imageUrl'] ?? map['image_url'] ?? '').toString(),
       podcastRss: (map['podcastRss'] ?? map['podcast_rss'] ?? '').toString(),
     );

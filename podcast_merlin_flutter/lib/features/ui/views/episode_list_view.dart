@@ -9,6 +9,7 @@ import '../../../core/providers/app_providers.dart';
 import '../widgets/cached_image.dart';
 import '../widgets/purified_html_text.dart';
 import '../widgets/sync_error_banner.dart';
+import '../widgets/timestamped_description.dart';
 
 class EpisodeListView extends ConsumerStatefulWidget {
   final Podcast? podcast;
@@ -22,6 +23,9 @@ class EpisodeListView extends ConsumerStatefulWidget {
 
 class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  EpisodeFilter? _localFilter;
 
   @override
   void initState() {
@@ -43,6 +47,7 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -108,13 +113,16 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
           ),
           PopupMenuButton<EpisodeFilter>(
             icon: const Icon(Icons.filter_list),
-            initialValue: episodesState.filter,
+            initialValue: _localFilter ?? episodesState.filter,
             onSelected: (filter) {
+              setState(() => _localFilter = filter);
               ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(filter);
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: EpisodeFilter.all, child: Text('All Episodes')),
               PopupMenuItem(value: EpisodeFilter.unplayed, child: Text('Unplayed Only')),
+              PopupMenuItem(value: EpisodeFilter.inProgress, child: Text('In Progress Only')),
+              PopupMenuItem(value: EpisodeFilter.starred, child: Text('Starred Only')),
               PopupMenuItem(value: EpisodeFilter.finished, child: Text('Finished Only')),
             ],
           ),
@@ -176,6 +184,131 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
     );
   }
 
+  void _selectFilter(EpisodeFilter filter) {
+    setState(() => _localFilter = filter);
+    ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(filter);
+  }
+
+  List<Episode> _filterEpisodes(List<Episode> rawList, EpisodeFilter filter, String query) {
+    return rawList.where((e) {
+      switch (filter) {
+        case EpisodeFilter.unplayed:
+          if (e.isPlayed) return false;
+          break;
+        case EpisodeFilter.inProgress:
+          if (e.isPlayed || e.position <= 0) return false;
+          break;
+        case EpisodeFilter.starred:
+          if (!e.isStarred) return false;
+          break;
+        case EpisodeFilter.finished:
+          if (!e.isFinished) return false;
+          break;
+        case EpisodeFilter.all:
+        case EpisodeFilter.downloaded:
+          break;
+      }
+
+      if (query.isNotEmpty) {
+        final q = query.toLowerCase();
+        final titleMatch = e.title.toLowerCase().contains(q);
+        final descMatch = e.description.toLowerCase().contains(q);
+        if (!titleMatch && !descMatch) return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  Widget _buildSearchAndFilterControls(
+    BuildContext context,
+    EpisodeFilter activeFilter,
+    int displayedCount,
+    int totalCount,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search episodes by title or notes...',
+              maintainHintSize: false,
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              isDense: true,
+            ),
+            onChanged: (val) {
+              setState(() => _searchQuery = val.trim());
+            },
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _EpisodeFilterChip(
+                        key: const ValueKey('filter_all'),
+                        label: 'All',
+                        selected: activeFilter == EpisodeFilter.all,
+                        onSelected: (_) => _selectFilter(EpisodeFilter.all),
+                      ),
+                      _EpisodeFilterChip(
+                        key: const ValueKey('filter_unplayed'),
+                        label: 'Unplayed',
+                        selected: activeFilter == EpisodeFilter.unplayed,
+                        onSelected: (_) => _selectFilter(EpisodeFilter.unplayed),
+                      ),
+                      _EpisodeFilterChip(
+                        key: const ValueKey('filter_in_progress'),
+                        label: 'In Progress',
+                        selected: activeFilter == EpisodeFilter.inProgress,
+                        onSelected: (_) => _selectFilter(EpisodeFilter.inProgress),
+                      ),
+                      _EpisodeFilterChip(
+                        key: const ValueKey('filter_starred'),
+                        label: 'Starred',
+                        selected: activeFilter == EpisodeFilter.starred,
+                        onSelected: (_) => _selectFilter(EpisodeFilter.starred),
+                      ),
+                      _EpisodeFilterChip(
+                        key: const ValueKey('filter_downloaded'),
+                        label: 'Downloaded',
+                        selected: activeFilter == EpisodeFilter.downloaded,
+                        onSelected: (_) => _selectFilter(EpisodeFilter.downloaded),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Showing $displayedCount of $totalCount episodes',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody(BuildContext context, EpisodesState episodesState, dynamic audioHandler) {
     if (episodesState.isLoading && episodesState.episodes.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -209,6 +342,9 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
       );
     }
 
+    final activeFilter = _localFilter ?? episodesState.filter;
+    final displayedEpisodes = _filterEpisodes(episodesState.episodes, activeFilter, _searchQuery);
+
     return RefreshIndicator(
       onRefresh: () async {
         await ref
@@ -223,6 +359,14 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             SliverToBoxAdapter(
               child: _buildPodcastHeader(context, widget.podcast!, episodesState.episodes.length),
             ),
+          SliverToBoxAdapter(
+            child: _buildSearchAndFilterControls(
+              context,
+              activeFilter,
+              displayedEpisodes.length,
+              episodesState.episodes.length,
+            ),
+          ),
           if (episodesState.episodes.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
@@ -230,6 +374,38 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                 child: Padding(
                   padding: EdgeInsets.all(24.0),
                   child: Text('No episodes found'),
+                ),
+              ),
+            )
+          else if (displayedEpisodes.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.search_off, size: 48, color: Colors.grey),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'No episodes match your search / filter',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                            _localFilter = EpisodeFilter.all;
+                          });
+                          ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(EpisodeFilter.all);
+                        },
+                        child: const Text('Clear Filters'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -243,15 +419,18 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                       return const Divider(height: 1, indent: 16, endIndent: 16);
                     }
                     final itemIndex = index ~/ 2;
-                    final ep = episodesState.episodes[itemIndex];
+                    final ep = displayedEpisodes[itemIndex];
                     return _EpisodeTile(
                       episode: ep,
                       audioHandler: audioHandler,
                       onTap: () => _showEpisodeDetailsModal(context, ep),
                       onPlay: () => audioHandler.playEpisode(ep),
+                      onToggleStar: () => ref
+                          .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                          .toggleStar(ep),
                     );
                   },
-                  childCount: math.max(0, episodesState.episodes.length * 2 - 1),
+                  childCount: math.max(0, displayedEpisodes.length * 2 - 1),
                 ),
               ),
             ),
@@ -456,14 +635,40 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: Icon(
+                  effectiveEp.isStarred ? Icons.star : Icons.star_border,
+                  color: effectiveEp.isStarred ? Colors.amber : null,
+                ),
+                label: Text(effectiveEp.isStarred ? 'Unstar Episode' : 'Star Episode'),
+                onPressed: () async {
+                  final newStatus = await ref
+                      .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                      .toggleStar(effectiveEp);
+                  if (modalCtx.mounted) {
+                    Navigator.pop(modalCtx);
+                  }
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(newStatus ? 'Episode starred' : 'Episode unstarred'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Description',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              PurifiedHtmlText(
-                htmlData: effectiveEp.description,
+              TimestampedDescription(
+                text: effectiveEp.description,
+                episode: effectiveEp,
                 textStyle: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
@@ -479,12 +684,14 @@ class _EpisodeTile extends StatelessWidget {
   final dynamic audioHandler;
   final VoidCallback onTap;
   final VoidCallback onPlay;
+  final VoidCallback onToggleStar;
 
   const _EpisodeTile({
     required this.episode,
     required this.audioHandler,
     required this.onTap,
     required this.onPlay,
+    required this.onToggleStar,
   });
 
   String _formatDuration(int seconds) {
@@ -673,6 +880,14 @@ class _EpisodeTile extends StatelessWidget {
             children: [
               IconButton(
                 icon: Icon(
+                  episode.isStarred ? Icons.star : Icons.star_border,
+                  color: episode.isStarred ? Colors.amber : null,
+                ),
+                tooltip: episode.isStarred ? 'Unstar episode' : 'Star episode',
+                onPressed: onToggleStar,
+              ),
+              IconButton(
+                icon: Icon(
                   isCurrent
                       ? Icons.volume_up
                       : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
@@ -692,7 +907,9 @@ class _EpisodeTile extends StatelessWidget {
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'More options',
                 onSelected: (value) {
-                  if (value == 'play_next') {
+                  if (value == 'star') {
+                    onToggleStar();
+                  } else if (value == 'play_next') {
                     audioHandler?.addToQueue(episode, playNext: true);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Playing next: ${episode.title}')),
@@ -704,8 +921,22 @@ class _EpisodeTile extends StatelessWidget {
                     );
                   }
                 },
-                itemBuilder: (context) => const [
+                itemBuilder: (context) => [
                   PopupMenuItem(
+                    value: 'star',
+                    child: Row(
+                      children: [
+                        Icon(
+                          episode.isStarred ? Icons.star : Icons.star_border,
+                          size: 20,
+                          color: episode.isStarred ? Colors.amber : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(episode.isStarred ? 'Unstar Episode' : 'Star Episode'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
                     value: 'play_next',
                     child: Row(
                       children: [
@@ -715,7 +946,7 @@ class _EpisodeTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'add_queue',
                     child: Row(
                       children: [
@@ -738,6 +969,69 @@ class _EpisodeTile extends StatelessWidget {
           child: tile,
         );
       },
+    );
+  }
+}
+
+class _EpisodeFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+
+  const _EpisodeFilterChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final backgroundColor = selected
+        ? colorScheme.secondaryContainer
+        : colorScheme.surface;
+    final textColor = selected
+        ? colorScheme.onSecondaryContainer
+        : colorScheme.onSurfaceVariant;
+    final borderColor = selected
+        ? colorScheme.secondaryContainer
+        : colorScheme.outlineVariant;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 6.0),
+      child: Material(
+        color: backgroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: borderColor),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => onSelected(!selected),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (selected) ...[
+                  Icon(Icons.check, size: 14, color: textColor),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 12,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

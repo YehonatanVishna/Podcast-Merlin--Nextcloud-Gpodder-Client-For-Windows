@@ -33,6 +33,7 @@ class DatabaseHelper {
   String _podcastIdCol = 'podcastId';
   String _pubDateCol = 'pubDate';
   String _isPlayedCol = 'isPlayed';
+  String _isStarredCol = 'isStarred';
   String _mediaUrlCol = 'mediaUrl';
   String _podcastRssUrlCol = 'rssUrl';
   bool _columnsDetected = false;
@@ -64,6 +65,18 @@ class DatabaseHelper {
         _isPlayedCol = 'isPlayed';
       } else if (epCols.contains('is_played')) {
         _isPlayedCol = 'is_played';
+      }
+
+      if (epCols.contains('isStarred')) {
+        _isStarredCol = 'isStarred';
+      } else if (epCols.contains('is_starred')) {
+        _isStarredCol = 'is_starred';
+      }
+
+      if (!epCols.contains('isStarred') && !epCols.contains('is_starred')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN isStarred INTEGER NOT NULL DEFAULT 0;');
+        } catch (_) {}
       }
 
       if (epCols.contains('mediaUrl')) {
@@ -189,6 +202,7 @@ class DatabaseHelper {
         duration INTEGER,
         position INTEGER DEFAULT 0,
         isPlayed INTEGER DEFAULT 0,
+        isStarred INTEGER NOT NULL DEFAULT 0,
         imageUrl TEXT,
         FOREIGN KEY (podcastId) REFERENCES podcasts (id) ON DELETE CASCADE,
         UNIQUE (podcastId, guid)
@@ -382,6 +396,7 @@ class DatabaseHelper {
       if (existing != null) {
         final finalPosition = existing.position > episode.position ? existing.position : episode.position;
         final finalIsPlayed = existing.isPlayed || episode.isPlayed;
+        final finalIsStarred = existing.isStarred || episode.isStarred;
 
         final adaptedMap = <String, dynamic>{
           _podcastIdCol: episode.podcastId,
@@ -393,6 +408,7 @@ class DatabaseHelper {
           'duration': episode.duration > 0 ? episode.duration : existing.duration,
           'position': finalPosition,
           _isPlayedCol: finalIsPlayed ? 1 : 0,
+          _isStarredCol: finalIsStarred ? 1 : 0,
           'imageUrl': episode.imageUrl.isNotEmpty ? episode.imageUrl : existing.imageUrl,
         };
 
@@ -415,6 +431,7 @@ class DatabaseHelper {
           'duration': episode.duration,
           'position': episode.position,
           _isPlayedCol: episode.isPlayed ? 1 : 0,
+          _isStarredCol: episode.isStarred ? 1 : 0,
           'imageUrl': episode.imageUrl,
         };
         batch.insert(
@@ -458,6 +475,10 @@ class DatabaseHelper {
       whereClause += ' AND e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position = 0 OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.finished) {
       whereClause += ' AND (e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position > 0 AND ((e.duration > 60 AND (e.duration - e.position) <= 60) OR (e.duration <= 60 AND e.position >= (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END)))))';
+    } else if (filter == EpisodeFilter.inProgress) {
+      whereClause += ' AND e.$_isPlayedCol = 0 AND e.position > 0 AND ((e.duration IS NULL OR e.duration = 0) OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
+    } else if (filter == EpisodeFilter.starred) {
+      whereClause += ' AND e.$_isStarredCol = 1';
     }
 
     final query = '''
@@ -488,6 +509,10 @@ class DatabaseHelper {
       whereClause = 'e.$_isPlayedCol = 0 AND (e.duration IS NULL OR e.duration = 0 OR e.position = 0 OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.finished) {
       whereClause = '(e.$_isPlayedCol = 1 OR (e.duration IS NOT NULL AND e.duration > 0 AND e.position > 0 AND ((e.duration > 60 AND (e.duration - e.position) <= 60) OR (e.duration <= 60 AND e.position >= (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END)))))';
+    } else if (filter == EpisodeFilter.inProgress) {
+      whereClause = 'e.$_isPlayedCol = 0 AND e.position > 0 AND ((e.duration IS NULL OR e.duration = 0) OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
+    } else if (filter == EpisodeFilter.starred) {
+      whereClause = 'e.$_isStarredCol = 1';
     }
 
     final query = '''
@@ -513,6 +538,53 @@ class DatabaseHelper {
       LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
       WHERE e.$_isPlayedCol = 0
       ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<int> setEpisodeStarred(int episodeId, bool isStarred) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.update(
+      'episodes',
+      {_isStarredCol: isStarred ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [episodeId],
+    );
+  }
+
+  Future<bool> toggleEpisodeStarred(int episodeId) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final rows = await db.query(
+      'episodes',
+      columns: [_isStarredCol],
+      where: 'id = ?',
+      whereArgs: [episodeId],
+    );
+    if (rows.isEmpty) return false;
+    final currentVal = (rows.first[_isStarredCol] as num?)?.toInt() == 1;
+    final newVal = !currentVal;
+    await db.update(
+      'episodes',
+      {_isStarredCol: newVal ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [episodeId],
+    );
+    return newVal;
+  }
+
+  Future<List<Episode>> getStarredEpisodes({int limit = 100}) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE e.$_isStarredCol = 1
+      ORDER BY e.$_pubDateCol DESC
+      LIMIT $limit
     ''';
     final maps = await db.rawQuery(query);
     return maps.map((map) => Episode.fromMap(map)).toList();

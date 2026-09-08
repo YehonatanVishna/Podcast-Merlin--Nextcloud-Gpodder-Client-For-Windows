@@ -10,6 +10,8 @@ class Podcast {
   final String? lastFeedError;
   final int feedErrorCount;
 
+  String get websiteUrl => link;
+
   const Podcast({
     this.id,
     required this.rssUrl,

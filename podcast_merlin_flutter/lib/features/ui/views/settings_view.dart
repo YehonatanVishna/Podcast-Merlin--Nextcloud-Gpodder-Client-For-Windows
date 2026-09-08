@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../sync/opml_service.dart';
 import '../../sync/secure_storage_service.dart';
 import '../widgets/sync_error_banner.dart';
 
@@ -99,6 +101,158 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ? 'Connected successfully to Nextcloud gPodder!'
           : 'Connection failed: $errorDetail';
     });
+  }
+
+  Future<void> _exportOpml() async {
+    final db = ref.read(databaseProvider);
+    final podcasts = await db.getAllPodcasts();
+    final xmlContent = OpmlService.generateOpml(podcasts: podcasts);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Export Subscriptions (${podcasts.length} feeds)'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('OPML 2.0 XML:'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: TextEditingController(text: xmlContent),
+                maxLines: 10,
+                readOnly: true,
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy),
+            label: const Text('Copy to Clipboard'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: xmlContent));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Exported ${podcasts.length} subscriptions to OPML (copied to clipboard)')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Exported ${podcasts.length} subscriptions to OPML')),
+    );
+  }
+
+  void _showImportOpmlDialog() {
+    final textController = TextEditingController();
+    bool syncWithServer = true;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final outlines = OpmlService.parseOpml(textController.text);
+
+          return AlertDialog(
+            title: const Text('Import Subscriptions from OPML'),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Paste OPML 2.0 XML or file content below:'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: textController,
+                    maxLines: 8,
+                    decoration: const InputDecoration(
+                      hintText: '<opml version="2.0">...',
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: outlines.isNotEmpty
+                          ? Colors.green.withValues(alpha: 0.1)
+                          : Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      outlines.isNotEmpty
+                          ? 'Detected ${outlines.length} podcast(s):\n${outlines.take(4).map((o) => '• ${o.title.isNotEmpty ? o.title : o.xmlUrl}').join('\n')}${outlines.length > 4 ? '\n• ...and ${outlines.length - 4} more' : ''}'
+                          : 'Paste valid OPML XML above to preview feeds',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: outlines.isNotEmpty ? Colors.green[900] : Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text('Sync new feeds with gPodder', style: TextStyle(fontSize: 13)),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: syncWithServer,
+                    onChanged: (val) => setDialogState(() => syncWithServer = val),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: outlines.isEmpty
+                    ? null
+                    : () async {
+                        final db = ref.read(databaseProvider);
+                        final imported = await OpmlService.importOpml(
+                          textController.text,
+                          db,
+                          syncWithServer: syncWithServer,
+                        );
+                        await ref.read(podcastsNotifierProvider.notifier).loadPodcasts();
+                        if (syncWithServer) {
+                          ref.read(syncStatusNotifierProvider.notifier).pushBacklog().catchError((_) => false);
+                        }
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Successfully imported ${imported.length} new podcast(s)')),
+                          );
+                        }
+                      },
+                child: Text('Import (${outlines.length})'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -382,6 +536,38 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   icon: const Icon(Icons.save),
                   label: const Text('Save Settings'),
                   onPressed: _saveCredentials,
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+                const Text(
+                  'OPML Management',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Import subscriptions from or export them to an OPML 2.0 file, compatible with antennaPod, Pocket Casts, and Apple Podcasts.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.file_upload_outlined),
+                        label: const Text('Export OPML'),
+                        onPressed: _exportOpml,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.file_download_outlined),
+                        label: const Text('Import OPML'),
+                        onPressed: _showImportOpmlDialog,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

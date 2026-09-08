@@ -23,10 +23,13 @@ void main() {
     });
 
     test('EpisodeFilter enum values', () {
-      expect(EpisodeFilter.values.length, 3);
+      expect(EpisodeFilter.values.length, 6);
       expect(EpisodeFilter.all.name, 'all');
       expect(EpisodeFilter.unplayed.name, 'unplayed');
+      expect(EpisodeFilter.inProgress.name, 'inProgress');
+      expect(EpisodeFilter.starred.name, 'starred');
       expect(EpisodeFilter.finished.name, 'finished');
+      expect(EpisodeFilter.downloaded.name, 'downloaded');
     });
 
     test('Episode fromMap and toMap handle both camelCase and snake_case', () {

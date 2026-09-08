@@ -345,6 +345,27 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
     }
   }
 
+  Future<bool> toggleStar(Episode episode) async {
+    int? epId = episode.id;
+    if (epId == null) {
+      final found = await _db.getEpisodeByGuid(episode.guid);
+      epId = found?.id;
+    }
+    if (epId == null) return false;
+
+    final newStarred = await _db.toggleEpisodeStarred(epId);
+    if (mounted) {
+      final updatedList = state.episodes.map((e) {
+        if (e.id == epId || (e.guid.isNotEmpty && e.guid == episode.guid)) {
+          return e.copyWith(isStarred: newStarred);
+        }
+        return e;
+      }).toList();
+      state = state.copyWith(episodes: updatedList);
+    }
+    return newStarred;
+  }
+
   Future<void> setFilter(EpisodeFilter filter) async {
     if (state.filter == filter && !state.isLoading) return;
     await loadEpisodes(filter: filter);
