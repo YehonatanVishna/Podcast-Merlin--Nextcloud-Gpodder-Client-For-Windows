@@ -1,8 +1,12 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/models/episode.dart';
 import '../../../core/providers/app_providers.dart';
 import 'cached_image.dart';
+import 'playback_speed_sheet.dart';
+import 'queue_bottom_sheet.dart';
+import 'sleep_timer_bottom_sheet.dart';
 
 class PlayerDock extends ConsumerWidget {
   const PlayerDock({super.key});
@@ -117,11 +121,26 @@ class PlayerDock extends ConsumerWidget {
                         ),
                       ),
                       // Controls
-                      IconButton(
-                        icon: const Icon(Icons.replay_10),
-                        onPressed: () => audioHandler.seekRelative(-10),
+                      // Rewind with configured duration
+                      StreamBuilder<({int rewind, int fastForward})>(
+                        stream: audioHandler.seekDurationsStream,
+                        initialData: (
+                          rewind: audioHandler.rewindDuration,
+                          fastForward: audioHandler.fastForwardDuration,
+                        ),
+                        builder: (context, seekSnapshot) {
+                          final rewindSec = seekSnapshot.data?.rewind ?? audioHandler.rewindDuration;
+                          return IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: _buildRewindIcon(rewindSec),
+                            tooltip: 'Rewind ${rewindSec}s',
+                            onPressed: () => audioHandler.rewind(),
+                          );
+                        },
                       ),
+                      // Play / Pause
                       IconButton(
+                        visualDensity: VisualDensity.compact,
                         icon: Icon(
                           isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
                           size: 38,
@@ -135,21 +154,81 @@ class PlayerDock extends ConsumerWidget {
                           }
                         },
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.forward_30),
-                        onPressed: () => audioHandler.seekRelative(30),
+                      // Fast Forward with configured duration
+                      StreamBuilder<({int rewind, int fastForward})>(
+                        stream: audioHandler.seekDurationsStream,
+                        initialData: (
+                          rewind: audioHandler.rewindDuration,
+                          fastForward: audioHandler.fastForwardDuration,
+                        ),
+                        builder: (context, seekSnapshot) {
+                          final forwardSec = seekSnapshot.data?.fastForward ?? audioHandler.fastForwardDuration;
+                          return IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: _buildForwardIcon(forwardSec),
+                            tooltip: 'Fast forward ${forwardSec}s',
+                            onPressed: () => audioHandler.fastForward(),
+                          );
+                        },
                       ),
                       // Speed selector
-                      PopupMenuButton<double>(
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
                         icon: const Icon(Icons.speed),
-                        onSelected: (speed) => audioHandler.setSpeed(speed),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 0.8, child: Text('0.8x')),
-                          PopupMenuItem(value: 1.0, child: Text('1.0x (Normal)')),
-                          PopupMenuItem(value: 1.25, child: Text('1.25x')),
-                          PopupMenuItem(value: 1.5, child: Text('1.5x')),
-                          PopupMenuItem(value: 2.0, child: Text('2.0x')),
-                        ],
+                        tooltip: 'Playback Speed',
+                        onPressed: () => PlaybackSpeedSheet.show(context),
+                      ),
+                      // Sleep Timer button
+                      StreamBuilder<Duration?>(
+                        stream: audioHandler.sleepTimerStream,
+                        initialData: audioHandler.sleepTimerRemaining,
+                        builder: (context, sleepSnapshot) {
+                          final isActive = audioHandler.isSleepTimerActive;
+                          final isEnd = audioHandler.isSleepTimerEndOfEpisode;
+                          final remaining = sleepSnapshot.data ?? audioHandler.sleepTimerRemaining;
+
+                          Widget iconWidget = const Icon(Icons.bedtime_outlined);
+                          if (isActive) {
+                            final label = isEnd
+                                ? 'End'
+                                : (remaining != null ? '${remaining.inMinutes}m' : 'On');
+                            iconWidget = Badge(
+                              label: Text(label, style: const TextStyle(fontSize: 9)),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              child: Icon(Icons.bedtime, color: Theme.of(context).colorScheme.primary),
+                            );
+                          }
+
+                          return IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: iconWidget,
+                            tooltip: 'Sleep Timer',
+                            onPressed: () => SleepTimerBottomSheet.show(context),
+                          );
+                        },
+                      ),
+                      // Queue button
+                      StreamBuilder<List<Episode>>(
+                        stream: audioHandler.queueStream,
+                        initialData: audioHandler.currentQueue,
+                        builder: (context, queueSnapshot) {
+                          final queue = queueSnapshot.data ?? audioHandler.currentQueue;
+                          Widget iconWidget = const Icon(Icons.queue_music);
+                          if (queue.isNotEmpty) {
+                            iconWidget = Badge(
+                              label: Text('${queue.length}', style: const TextStyle(fontSize: 9)),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              child: Icon(Icons.queue_music, color: Theme.of(context).colorScheme.primary),
+                            );
+                          }
+
+                          return IconButton(
+                            visualDensity: VisualDensity.compact,
+                            icon: iconWidget,
+                            tooltip: 'Up Next Queue',
+                            onPressed: () => QueueBottomSheet.show(context),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -159,6 +238,44 @@ class PlayerDock extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  Widget _buildRewindIcon(int seconds) {
+    if (seconds == 5) return const Icon(Icons.replay_5);
+    if (seconds == 10) return const Icon(Icons.replay_10);
+    if (seconds == 30) return const Icon(Icons.replay_30);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        const Icon(Icons.replay),
+        Positioned(
+          bottom: 2,
+          child: Text(
+            '$seconds',
+            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForwardIcon(int seconds) {
+    if (seconds == 5) return const Icon(Icons.forward_5);
+    if (seconds == 10) return const Icon(Icons.forward_10);
+    if (seconds == 30) return const Icon(Icons.forward_30);
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        const Icon(Icons.forward),
+        Positioned(
+          bottom: 2,
+          child: Text(
+            '$seconds',
+            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
     );
   }
 

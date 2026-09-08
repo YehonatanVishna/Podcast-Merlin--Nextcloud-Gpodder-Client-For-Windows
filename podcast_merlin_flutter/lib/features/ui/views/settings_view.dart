@@ -21,6 +21,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   bool _isTesting = false;
   String? _statusMessage;
   bool _isSuccessStatus = false;
+  int _rewindSeconds = 10;
+  int _fastForwardSeconds = 30;
 
   @override
   void initState() {
@@ -33,6 +35,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     _serverController.text = await storage.read(SecureStorageService.keyServerUrl) ?? '';
     _userController.text = await storage.read(SecureStorageService.keyUsername) ?? '';
     _passwordController.text = await storage.read(SecureStorageService.keyPassword) ?? '';
+
+    final rew = await storage.read(SecureStorageService.keyRewindDuration);
+    final ff = await storage.read(SecureStorageService.keyFastForwardDuration);
+    if (rew != null && int.tryParse(rew) != null) {
+      _rewindSeconds = int.parse(rew);
+    }
+    if (ff != null && int.tryParse(ff) != null) {
+      _fastForwardSeconds = int.parse(ff);
+    }
 
     setState(() {
       _isLoading = false;
@@ -55,6 +66,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     await storage.write(SecureStorageService.keyServerUrl, newServer);
     await storage.write(SecureStorageService.keyUsername, newUser);
     await storage.write(SecureStorageService.keyPassword, _passwordController.text.trim());
+
+    await storage.write(SecureStorageService.keyRewindDuration, _rewindSeconds.toString());
+    await storage.write(SecureStorageService.keyFastForwardDuration, _fastForwardSeconds.toString());
+    ref.read(audioHandlerProvider).setSeekDurations(rewind: _rewindSeconds, fastForward: _fastForwardSeconds);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,6 +309,70 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                             : const Icon(Icons.cloud_done),
                         label: const Text('Test Connection'),
                         onPressed: _isTesting ? null : _testConnection,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+                const Text(
+                  'Playback & Seek Controls',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Customize the rewind and fast-forward skip intervals used in the player dock.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _rewindSeconds,
+                        decoration: const InputDecoration(
+                          labelText: 'Rewind Interval',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.replay),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 5, child: Text('5 seconds')),
+                          DropdownMenuItem(value: 10, child: Text('10 seconds')),
+                          DropdownMenuItem(value: 15, child: Text('15 seconds')),
+                          DropdownMenuItem(value: 30, child: Text('30 seconds')),
+                          DropdownMenuItem(value: 45, child: Text('45 seconds')),
+                          DropdownMenuItem(value: 60, child: Text('60 seconds')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _rewindSeconds = val);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _fastForwardSeconds,
+                        decoration: const InputDecoration(
+                          labelText: 'Fast Forward Interval',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.forward),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 5, child: Text('5 seconds')),
+                          DropdownMenuItem(value: 10, child: Text('10 seconds')),
+                          DropdownMenuItem(value: 15, child: Text('15 seconds')),
+                          DropdownMenuItem(value: 30, child: Text('30 seconds')),
+                          DropdownMenuItem(value: 45, child: Text('45 seconds')),
+                          DropdownMenuItem(value: 60, child: Text('60 seconds')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _fastForwardSeconds = val);
+                          }
+                        },
                       ),
                     ),
                   ],

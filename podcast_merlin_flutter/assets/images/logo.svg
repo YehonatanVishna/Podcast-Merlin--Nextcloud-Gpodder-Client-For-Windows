@@ -1,37 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <!-- Crisp Vector Glow Filters -->
-    <filter id="neon-glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="3" result="blur1"/>
-      <feGaussianBlur stdDeviation="8" result="blur2"/>
-      <feMerge>
-        <feMergeNode in="blur2"/>
-        <feMergeNode in="blur1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="5" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <filter id="star-glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="2.5" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <filter id="drop-shadow-soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#020408" flood-opacity="0.85"/>
-    </filter>
-
     <!-- Gradients -->
+
     <linearGradient id="squircle-bg-grad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#1c283a"/>
       <stop offset="45%" stop-color="#131c2b"/>
@@ -169,12 +139,12 @@
 
     <!-- Reusable Gold Stars -->
     <g id="star-gold-large">
-      <path d="M 0,-14 Q 0,0 14,0 Q 0,0 0,14 Q 0,0 -14,0 Q 0,0 0,-14 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M 0,-14 Q 0,0 14,0 Q 0,0 0,14 Q 0,0 -14,0 Q 0,0 0,-14 Z" fill="url(#celestial-gold-grad)"/>
       <path d="M 0,-9 Q 0,0 9,0 Q 0,0 0,9 Q 0,0 -9,0 Q 0,0 0,-9 Z" fill="#ffffff" opacity="0.75"/>
     </g>
 
     <g id="star-gold-small">
-      <path d="M 0,-9 Q 0,0 9,0 Q 0,0 0,9 Q 0,0 -9,0 Q 0,0 0,-9 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M 0,-9 Q 0,0 9,0 Q 0,0 0,9 Q 0,0 -9,0 Q 0,0 0,-9 Z" fill="url(#celestial-gold-grad)"/>
       <path d="M 0,-6 Q 0,0 6,0 Q 0,0 0,6 Q 0,0 -6,0 Q 0,0 0,-6 Z" fill="#ffffff" opacity="0.8"/>
     </g>
   </defs>
@@ -187,11 +157,11 @@
   <circle cx="512" cy="510" r="330" fill="url(#ambient-coral-halo)"/>
   <circle cx="512" cy="510" r="320" fill="url(#disc-bg-grad)" stroke="#162233" stroke-width="2"/>
   <path d="M 205,420 A 320,320 0 0,1 819,420 A 320,250 0 0,0 205,420 Z" fill="url(#disc-top-cyan-rim)" opacity="0.85"/>
-  <path d="M 320,760 A 320,320 0 0,0 800,550" fill="none" stroke="#800e1d" stroke-width="8" opacity="0.45" filter="url(#soft-glow)"/>
+  <path d="M 320,760 A 320,320 0 0,0 800,550" fill="none" stroke="#800e1d" stroke-width="8" opacity="0.45"/>
 
   <!-- 3. HEADBAND (TALL CIRCULAR ARCH REACHING Y=180) -->
-  <g filter="url(#drop-shadow-soft)">
-    <path d="M 260,490 C 260,180 764,180 764,490" fill="none" stroke="#ff2a4b" stroke-width="24" opacity="0.25" filter="url(#neon-glow)"/>
+  <g>
+    <path d="M 260,490 C 260,180 764,180 764,490" fill="none" stroke="#ff2a4b" stroke-width="24" opacity="0.25"/>
     <path d="M 260,490 C 260,185 764,185 764,490" fill="none" stroke="url(#headband-outer-grad)" stroke-width="18" stroke-linecap="round"/>
     <path d="M 264,485 C 264,188 760,188 760,485" fill="none" stroke="url(#specular-light)" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M 282,495 C 287,215 737,215 742,495" fill="none" stroke="url(#headband-inner-grad)" stroke-width="12" stroke-linecap="round"/>
@@ -202,12 +172,12 @@
 
   <!-- 4. EARCUPS -->
   <!-- LEFT EARCUP -->
-  <g transform="translate(356, 617) rotate(-18)" filter="url(#drop-shadow-soft)">
-    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4" filter="url(#neon-glow)"/>
+  <g transform="translate(356, 617) rotate(-18)">
+    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4"/>
     <ellipse cx="0" cy="0" rx="76" ry="118" fill="url(#earcup-shell-left)"/>
     <ellipse cx="-3" cy="-3" rx="72" ry="112" fill="none" stroke="url(#specular-light)" stroke-width="4.5" opacity="0.85"/>
     <ellipse cx="2" cy="0" rx="52" ry="84" fill="url(#earcup-cavity-grad)" stroke="#3a0008" stroke-width="2.5"/>
-    <ellipse cx="2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7" filter="url(#neon-glow)"/>
+    <ellipse cx="2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7"/>
     <ellipse cx="2" cy="0" rx="40" ry="66" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.95"/>
     <g transform="translate(2, 0)">
       <use href="#star-gold-large"/>
@@ -215,12 +185,12 @@
   </g>
 
   <!-- RIGHT EARCUP -->
-  <g transform="translate(668, 617) rotate(18)" filter="url(#drop-shadow-soft)">
-    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4" filter="url(#neon-glow)"/>
+  <g transform="translate(668, 617) rotate(18)">
+    <ellipse cx="0" cy="0" rx="80" ry="122" fill="none" stroke="#ff2a4b" stroke-width="8" opacity="0.4"/>
     <ellipse cx="0" cy="0" rx="76" ry="118" fill="url(#earcup-shell-right)"/>
     <ellipse cx="3" cy="-3" rx="72" ry="112" fill="none" stroke="url(#specular-light)" stroke-width="4.5" opacity="0.85"/>
     <ellipse cx="-2" cy="0" rx="52" ry="84" fill="url(#earcup-cavity-grad)" stroke="#3a0008" stroke-width="2.5"/>
-    <ellipse cx="-2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7" filter="url(#neon-glow)"/>
+    <ellipse cx="-2" cy="0" rx="40" ry="66" fill="none" stroke="url(#earcup-neon-ring)" stroke-width="7"/>
     <ellipse cx="-2" cy="0" rx="40" ry="66" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.95"/>
     <g transform="translate(-2, 0)">
       <use href="#star-gold-large"/>
@@ -228,9 +198,9 @@
   </g>
 
   <!-- 5. MAJESTIC WIZARD HAT -->
-  <g filter="url(#drop-shadow-soft)">
+  <g>
     <!-- Ambient Red Glow Behind Hat Cone -->
-    <ellipse cx="512" cy="340" rx="160" ry="120" fill="#ff2a4b" opacity="0.22" filter="url(#soft-glow)"/>
+    <ellipse cx="512" cy="340" rx="160" ry="120" fill="#ff2a4b" opacity="0.22"/>
 
     <!-- HAT CONE LIT FACE -->
     <path d="M 405,470 
@@ -254,23 +224,23 @@
     <path d="M 550,228 C 535,280 535,365 545,470" fill="none" stroke="#150003" stroke-width="4" opacity="0.5"/>
 
     <!-- Left Silhouette Edge Bright Neon Orange Stroke -->
-    <path d="M 405,470 C 415,395 440,305 485,248 C 505,225 530,220 550,228" fill="none" stroke="url(#hat-left-neon-stroke)" stroke-width="5.5" filter="url(#soft-glow)"/>
+    <path d="M 405,470 C 415,395 440,305 485,248 C 505,225 530,220 550,228" fill="none" stroke="url(#hat-left-neon-stroke)" stroke-width="5.5"/>
 
     <!-- TASSEL ATTACHED TO FOLDED TIP -->
     <circle cx="632" cy="328" r="5" fill="#ffcc00"/>
     <path d="M 632,333 Q 635,348 632,362" fill="none" stroke="#ffb300" stroke-width="2.5"/>
-    <circle cx="632" cy="364" r="6" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+    <circle cx="632" cy="364" r="6" fill="url(#celestial-gold-grad)"/>
     <path d="M 625,370 L 632,390 L 639,370 Z" fill="#ff2a4b"/>
     <path d="M 627,370 L 632,390 L 637,370 Z" fill="url(#celestial-gold-grad)" opacity="0.75"/>
 
     <!-- METALLIC GOLD BASE BAND -->
-    <path d="M 402,465 Q 512,445 624,465" fill="none" stroke="url(#hat-gold-band)" stroke-width="14" stroke-linecap="round" filter="url(#neon-glow)"/>
+    <path d="M 402,465 Q 512,445 624,465" fill="none" stroke="url(#hat-gold-band)" stroke-width="14" stroke-linecap="round"/>
     <path d="M 402,465 Q 512,445 624,465" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" opacity="0.95"/>
 
     <!-- CELESTIAL MOON & STARS -->
     <!-- Crescent Moon facing RIGHT ) -->
     <g transform="translate(515, 348) rotate(12)">
-      <path d="M -9,-25 C 16,-15 16,15 -9,25 C 7,15 7,-15 -9,-25 Z" fill="url(#celestial-gold-grad)" filter="url(#star-glow)"/>
+      <path d="M -9,-25 C 16,-15 16,15 -9,25 C 7,15 7,-15 -9,-25 Z" fill="url(#celestial-gold-grad)"/>
       <path d="M -7,-23 C 14,-13 14,13 -7,23 C 5,13 5,-13 -7,-23 Z" fill="#ffffff" opacity="0.85"/>
     </g>
 
@@ -301,18 +271,18 @@
     <path d="M 267,475 C 340,488 425,495 512,495 C 599,495 684,488 756,475" fill="none" stroke="#ffa0b2" stroke-width="3" opacity="0.9"/>
 
     <!-- Front Neon Edge Lip -->
-    <path d="M 267,475 C 340,515 425,530 512,530 C 599,530 684,515 756,475" fill="none" stroke="#ff2a4b" stroke-width="6.5" filter="url(#neon-glow)"/>
+    <path d="M 267,475 C 340,515 425,530 512,530 C 599,530 684,515 756,475" fill="none" stroke="#ff2a4b" stroke-width="6.5"/>
     <path d="M 267,475 C 340,515 425,530 512,530 C 599,530 684,515 756,475" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.95"/>
   </g>
 
   <!-- 6. AUDIO WAVEFORM -->
-  <g transform="translate(512, 640)" filter="url(#drop-shadow-soft)">
-    <ellipse cx="0" cy="0" rx="75" ry="32" fill="#ff2a4b" opacity="0.35" filter="url(#soft-glow)"/>
-    <rect x="-4.5" y="-38" width="9" height="76" rx="4.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
-    <rect x="-18" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
-    <rect x="10" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
-    <rect x="-30.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
-    <rect x="23.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)" filter="url(#neon-glow)"/>
+  <g transform="translate(512, 640)">
+    <ellipse cx="0" cy="0" rx="75" ry="32" fill="#ff2a4b" opacity="0.35"/>
+    <rect x="-4.5" y="-38" width="9" height="76" rx="4.5" fill="url(#wave-bar-grad)"/>
+    <rect x="-18" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)"/>
+    <rect x="10" y="-30" width="8" height="60" rx="4" fill="url(#wave-bar-grad)"/>
+    <rect x="-30.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)"/>
+    <rect x="23.5" y="-22" width="7" height="44" rx="3.5" fill="url(#wave-bar-grad)"/>
     <rect x="-42" y="-15" width="6" height="30" rx="3" fill="url(#wave-bar-grad)"/>
     <rect x="36" y="-15" width="6" height="30" rx="3" fill="url(#wave-bar-grad)"/>
     <rect x="-52.5" y="-9" width="5" height="18" rx="2.5" fill="url(#wave-bar-grad)"/>

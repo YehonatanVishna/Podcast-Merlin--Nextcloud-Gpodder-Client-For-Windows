@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'podcast_catalog_view.dart';
 import 'episode_list_view.dart';
@@ -6,6 +8,7 @@ import 'podcast_discovery_view.dart';
 import 'settings_view.dart';
 import '../widgets/player_dock.dart';
 import '../../../core/models/podcast.dart';
+import '../../../core/providers/app_providers.dart';
 
 class ShellNavigationState {
   final int selectedIndex;
@@ -28,18 +31,50 @@ class ShellNavigationState {
   int get hashCode => selectedIndex.hashCode ^ (selectedPodcast?.id.hashCode ?? 0);
 }
 
-class MainShell extends StatefulWidget {
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => MainShellState();
+  ConsumerState<MainShell> createState() => MainShellState();
 }
 
-class MainShellState extends State<MainShell> {
+class MainShellState extends ConsumerState<MainShell> {
   final List<ShellNavigationState> _history = [
     const ShellNavigationState(selectedIndex: 0, selectedPodcast: null),
   ];
   int _historyIndex = 0;
+  StreamSubscription<String>? _playbackErrorSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playbackErrorSub = ref.read(audioHandlerProvider).onPlaybackError.listen((errorMsg) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red[800],
+            duration: const Duration(seconds: 8),
+            content: Text(
+              errorMsg,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+            action: SnackBarAction(
+              label: 'Dismiss',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _playbackErrorSub?.cancel();
+    super.dispose();
+  }
 
   int get selectedIndex => _history[_historyIndex].selectedIndex;
   Podcast? get selectedPodcast => _history[_historyIndex].selectedPodcast;

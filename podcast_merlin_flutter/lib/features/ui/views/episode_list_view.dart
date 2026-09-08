@@ -424,6 +424,38 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   ref.read(audioHandlerProvider).playEpisode(effectiveEp);
                 },
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.playlist_play),
+                      label: const Text('Play Next'),
+                      onPressed: () {
+                        Navigator.pop(modalCtx);
+                        ref.read(audioHandlerProvider).addToQueue(effectiveEp, playNext: true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Added "${effectiveEp.title}" as next up')),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.queue_music),
+                      label: const Text('Add to Queue'),
+                      onPressed: () {
+                        Navigator.pop(modalCtx);
+                        ref.read(audioHandlerProvider).addToQueue(effectiveEp, playNext: false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Added "${effectiveEp.title}" to queue')),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Description',
@@ -535,7 +567,7 @@ class _EpisodeTile extends StatelessWidget {
           progressPercentage = (displayPosition / displayDuration).clamp(0.0, 1.0);
         }
 
-        final showProgress = (displayPosition > 0 || isCurrent) && !isFinished;
+        final showProgress = displayPosition > 0 && !isFinished;
 
         final tile = ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -636,22 +668,66 @@ class _EpisodeTile extends StatelessWidget {
               ],
             ],
           ),
-          trailing: IconButton(
-            icon: Icon(
-              isCurrent
-                  ? Icons.volume_up
-                  : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
-              size: 32,
-              color: isCurrent
-                  ? Theme.of(context).colorScheme.primary
-                  : (isFinished
-                      ? Theme.of(context).colorScheme.outline
-                      : Theme.of(context).colorScheme.primary),
-            ),
-            tooltip: isCurrent
-                ? 'Now playing'
-                : (isFinished ? 'Replay episode' : 'Play episode'),
-            onPressed: onPlay,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  isCurrent
+                      ? Icons.volume_up
+                      : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
+                  size: 32,
+                  color: isCurrent
+                      ? Theme.of(context).colorScheme.primary
+                      : (isFinished
+                          ? Theme.of(context).colorScheme.outline
+                          : Theme.of(context).colorScheme.primary),
+                ),
+                tooltip: isCurrent
+                    ? 'Now playing'
+                    : (isFinished ? 'Replay episode' : 'Play episode'),
+                onPressed: onPlay,
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                tooltip: 'More options',
+                onSelected: (value) {
+                  if (value == 'play_next') {
+                    audioHandler?.addToQueue(episode, playNext: true);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Playing next: ${episode.title}')),
+                    );
+                  } else if (value == 'add_queue') {
+                    audioHandler?.addToQueue(episode, playNext: false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Added to queue: ${episode.title}')),
+                    );
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'play_next',
+                    child: Row(
+                      children: [
+                        Icon(Icons.playlist_play, size: 20),
+                        SizedBox(width: 12),
+                        Text('Play Next'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'add_queue',
+                    child: Row(
+                      children: [
+                        Icon(Icons.queue_music, size: 20),
+                        SizedBox(width: 12),
+                        Text('Add to Queue'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           onTap: onTap,
         );

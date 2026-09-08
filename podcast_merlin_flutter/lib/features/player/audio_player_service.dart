@@ -4,20 +4,45 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../core/database/database_helper.dart';
+import '../../core/database/ffi_init.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/gpodder_action.dart';
 import '../../core/services/image_cache_service.dart';
+import '../sync/secure_storage_service.dart';
 import '../sync/sync_service.dart';
 import 'linux_mpris_service.dart';
 
 typedef PositionUpdateEvent = ({String mediaUrl, int position, bool isPlayed});
+enum SleepTimerMode { none, duration, endOfEpisode }
 
 class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player = AudioPlayer();
-  final DatabaseHelper _db = DatabaseHelper.instance;
-  final SyncService _syncService = SyncService();
+  final AudioPlayer _player;
+  final DatabaseHelper _db;
+  final SyncService _syncService;
   final StreamController<PositionUpdateEvent> _positionUpdateController =
       StreamController<PositionUpdateEvent>.broadcast();
+
+  // Queue state
+  List<Episode> _queue = [];
+  final StreamController<List<Episode>> _queueController =
+      StreamController<List<Episode>>.broadcast();
+
+  // Sleep timer state
+  Timer? _sleepTimer;
+  Duration? _sleepTimerRemaining;
+  SleepTimerMode _sleepTimerMode = SleepTimerMode.none;
+  final StreamController<Duration?> _sleepTimerController =
+      StreamController<Duration?>.broadcast();
+
+  // Seek durations state
+  int rewindDuration = 10;
+  int fastForwardDuration = 30;
+  final StreamController<({int rewind, int fastForward})> _seekDurationsController =
+      StreamController<({int rewind, int fastForward})>.broadcast();
+  final StreamController<String> _playbackErrorController =
+      StreamController<String>.broadcast();
+
+  Stream<String> get onPlaybackError => _playbackErrorController.stream;
 
   Episode? _currentEpisode;
   Timer? _positionSyncTimer;
@@ -27,15 +52,44 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _positionSub;
 
-  MerlinAudioHandler() {
-    _initAudioSession();
-    _initPlayerListeners();
-    LinuxMprisService.instance.init(this);
+  final Future<void> Function(String url)? urlLoader;
+  double _speed = 1.0;
+
+  MerlinAudioHandler({
+    DatabaseHelper? db,
+    SyncService? syncService,
+    AudioPlayer? player,
+    this.urlLoader,
+  })  : _db = db ?? DatabaseHelper.instance,
+        _syncService = syncService ?? SyncService(),
+        _player = player ?? AudioPlayer() {
+    if (urlLoader == null) {
+      _initAudioSession();
+      _initPlayerListeners();
+      LinuxMprisService.instance.init(this);
+    }
+    _loadInitialQueue();
+    _loadSeekDurations();
   }
 
   Stream<PositionUpdateEvent> get onPositionUpdated => _positionUpdateController.stream;
-
   Episode? get currentEpisode => _currentEpisode;
+
+  // Queue getters
+  Stream<List<Episode>> get queueStream => _queueController.stream;
+  List<Episode> get currentQueue => List.unmodifiable(_queue);
+  List<Episode> get episodeQueue => List.unmodifiable(_queue);
+
+  // Sleep timer getters
+  Stream<Duration?> get sleepTimerStream => _sleepTimerController.stream;
+  Duration? get sleepTimerRemaining => _sleepTimerRemaining;
+  SleepTimerMode get sleepTimerMode => _sleepTimerMode;
+  bool get isSleepTimerActive => _sleepTimerMode != SleepTimerMode.none;
+  bool get isSleepTimerEndOfEpisode => _sleepTimerMode == SleepTimerMode.endOfEpisode;
+
+  // Seek durations getters
+  Stream<({int rewind, int fastForward})> get seekDurationsStream => _seekDurationsController.stream;
+  double get speed => urlLoader != null ? _speed : _player.speed;
 
   Future<void> _initAudioSession() async {
     try {
@@ -160,17 +214,21 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> rewind() async {
-    await seekRelative(-15);
+    await seekRelative(-rewindDuration);
   }
 
   @override
   Future<void> fastForward() async {
-    await seekRelative(30);
+    await seekRelative(fastForwardDuration);
   }
 
   @override
   Future<void> skipToNext() async {
-    await fastForward();
+    if (_queue.isNotEmpty) {
+      await playNextInQueue();
+    } else {
+      await fastForward();
+    }
   }
 
   @override
@@ -179,8 +237,14 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> playEpisode(Episode episode) async {
+    if (episode.id != null) {
+      await removeFromQueue(episode.id!);
+    }
+
     if (_currentEpisode != null && _currentEpisode!.mediaUrl != episode.mediaUrl) {
-      await _enqueueCurrentPositionAction();
+      if (!_currentEpisode!.isPlayed && !_currentEpisode!.isFinished) {
+        await _enqueueCurrentPositionAction();
+      }
     }
 
     Episode epToPlay = episode;
@@ -201,7 +265,9 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     if (wasFinished) {
       epToPlay = epToPlay.copyWith(position: 0, isPlayed: false);
       await _db.updateEpisodePlaybackState(epToPlay.mediaUrl, 0, isPlayed: false);
-      _positionUpdateController.add((mediaUrl: epToPlay.mediaUrl, position: 0, isPlayed: false));
+      if (!_positionUpdateController.isClosed) {
+        _positionUpdateController.add((mediaUrl: epToPlay.mediaUrl, position: 0, isPlayed: false));
+      }
       if (epToPlay.podcastRss.isNotEmpty) {
         final resetAction = GPodderAction(
           podcast: epToPlay.podcastRss,
@@ -278,7 +344,39 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       updatePosition: Duration(seconds: epToPlay.position),
     );
     playbackState.add(initialLoadingState);
-    LinuxMprisService.instance.updateState(initialLoadingState, newItem);
+    if (urlLoader == null) {
+      LinuxMprisService.instance.updateState(initialLoadingState, newItem);
+    }
+
+    if (urlLoader != null) {
+      try {
+        await urlLoader!(epToPlay.mediaUrl);
+      } catch (_) {}
+      final readyState = initialLoadingState.copyWith(
+        playing: true,
+        processingState: AudioProcessingState.ready,
+      );
+      playbackState.add(readyState);
+      _startPeriodicPositionSync();
+      return;
+    }
+
+    if (audioBackendInitError != null && urlLoader == null) {
+      final errorMsg = formatAudioBackendError(audioBackendInitError);
+      if (kDebugMode) print(errorMsg);
+      final errorState = playbackState.value.copyWith(
+        playing: false,
+        processingState: AudioProcessingState.idle,
+      );
+      playbackState.add(errorState);
+      if (urlLoader == null) {
+        LinuxMprisService.instance.updateState(errorState, mediaItem.value);
+      }
+      if (!_playbackErrorController.isClosed) {
+        _playbackErrorController.add(errorMsg);
+      }
+      return;
+    }
 
     try {
       await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
@@ -292,19 +390,47 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     } on PlayerInterruptedException {
       // Swallowed on rapid track change
     } catch (e) {
-      if (kDebugMode) print('Error playing episode: $e');
+      final errorMsg = formatAudioBackendError(e);
+      if (kDebugMode) print(errorMsg);
       final errorState = playbackState.value.copyWith(
         playing: false,
         processingState: AudioProcessingState.idle,
       );
       playbackState.add(errorState);
-      LinuxMprisService.instance.updateState(errorState, mediaItem.value);
+      if (urlLoader == null) {
+        LinuxMprisService.instance.updateState(errorState, mediaItem.value);
+      }
+      if (!_playbackErrorController.isClosed) {
+        _playbackErrorController.add(errorMsg);
+      }
     }
   }
+
+  static String formatAudioBackendError(dynamic error) {
+    final s = error.toString();
+    if (s.contains('libmpv') || s.contains('MediaKit')) {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+        return 'Audio playback on Linux requires libmpv.\n'
+            'Please install it using:\n'
+            '  sudo dnf install mpv-libs (Fedora / RHEL)\n'
+            '  sudo apt install libmpv-dev (Ubuntu / Debian)\n'
+            '  sudo pacman -S mpv (Arch Linux)';
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        return 'Audio playback requires libmpv-2.dll on Windows.';
+      }
+    }
+    return 'Playback error: $s';
+  }
+
 
   @override
   Future<void> play() async {
     try {
+      if (urlLoader != null) {
+        playbackState.add(playbackState.value.copyWith(playing: true));
+        _startPeriodicPositionSync();
+        return;
+      }
       await _setActiveAudioSession(true);
       await _player.play();
       _startPeriodicPositionSync();
@@ -314,6 +440,12 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> pause() async {
     try {
+      if (urlLoader != null) {
+        playbackState.add(playbackState.value.copyWith(playing: false));
+        _stopPeriodicPositionSync();
+        await _enqueueCurrentPositionAction();
+        return;
+      }
       await _player.pause();
       _stopPeriodicPositionSync();
       await _enqueueCurrentPositionAction();
@@ -323,6 +455,12 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> stop() async {
     try {
+      if (urlLoader != null) {
+        playbackState.add(playbackState.value.copyWith(playing: false));
+        _stopPeriodicPositionSync();
+        await _enqueueCurrentPositionAction();
+        return;
+      }
       await _player.stop();
       await _setActiveAudioSession(false);
       _stopPeriodicPositionSync();
@@ -333,6 +471,11 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> seek(Duration position) async {
     try {
+      if (urlLoader != null) {
+        playbackState.add(playbackState.value.copyWith(updatePosition: position));
+        await _enqueueCurrentPositionAction();
+        return;
+      }
       await _player.seek(position);
       await _enqueueCurrentPositionAction();
     } catch (_) {}
@@ -341,6 +484,11 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> setSpeed(double speed) async {
     try {
+      _speed = speed;
+      if (urlLoader != null) {
+        playbackState.add(playbackState.value.copyWith(speed: speed));
+        return;
+      }
       await _player.setSpeed(speed);
     } catch (_) {}
   }
@@ -360,6 +508,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _startPeriodicPositionSync() {
+    if (urlLoader != null) return;
     _stopPeriodicPositionSync();
     _positionSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _enqueueCurrentPositionAction();
@@ -373,6 +522,7 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _enqueueCurrentPositionAction() async {
     if (_currentEpisode == null) return;
+    if (_currentEpisode!.isPlayed || _currentEpisode!.isFinished) return;
     var podcastRss = _currentEpisode!.podcastRss;
     if (podcastRss.isEmpty && _currentEpisode!.podcastId != null && _currentEpisode!.podcastId! > 0) {
       final pod = await _db.getPodcastById(_currentEpisode!.podcastId!);
@@ -402,7 +552,9 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     _currentEpisode = _currentEpisode!.copyWith(position: currentSec, isPlayed: isPlayed);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, currentSec, isPlayed: isPlayed);
-    _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: currentSec, isPlayed: isPlayed));
+    if (!_positionUpdateController.isClosed) {
+      _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: currentSec, isPlayed: isPlayed));
+    }
 
     if (podcastRss.isNotEmpty) {
       final action = GPodderAction(
@@ -432,10 +584,14 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     }
 
-    final totalSec = (_player.duration?.inSeconds ?? _currentEpisode!.duration);
+    final totalSec = (urlLoader != null
+        ? _currentEpisode!.duration
+        : (_player.duration?.inSeconds ?? _currentEpisode!.duration));
     _currentEpisode = _currentEpisode!.copyWith(position: totalSec, isPlayed: true);
     await _db.updateEpisodePlaybackState(_currentEpisode!.mediaUrl, totalSec, isPlayed: true);
-    _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: totalSec, isPlayed: true));
+    if (!_positionUpdateController.isClosed) {
+      _positionUpdateController.add((mediaUrl: _currentEpisode!.mediaUrl, position: totalSec, isPlayed: true));
+    }
 
     if (podcastRss.isNotEmpty) {
       final action = GPodderAction(
@@ -452,14 +608,195 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       _syncService.pushPendingActions().catchError((_) => false);
     }
     _stopPeriodicPositionSync();
+
+    // Check Sleep Timer: if endOfEpisode, stop and cancel timer!
+    if (_sleepTimerMode == SleepTimerMode.endOfEpisode) {
+      cancelSleepTimer();
+      await pause();
+      return;
+    }
+
+    // Automatically pop and play next episode if queue has items!
+    if (_queue.isNotEmpty) {
+      await playNextInQueue();
+    }
+  }
+
+  @visibleForTesting
+  Future<void> onPlaybackCompletedForTesting() => _onPlaybackCompleted();
+
+  // --- QUEUE CONTROLS ---
+
+  Future<void> _loadInitialQueue() async {
+    try {
+      _queue = await _db.getQueue();
+      _syncMediaItemQueue();
+    } catch (e) {
+      if (kDebugMode) print('Error loading initial queue: $e');
+    }
+  }
+
+  void _syncMediaItemQueue() {
+    final mediaItems = _queue.map((ep) => MediaItem(
+      id: ep.mediaUrl,
+      album: ep.podcastRss,
+      artist: ep.podcastRss,
+      title: ep.title,
+      duration: Duration(seconds: ep.duration),
+      artUri: Uri.tryParse(ep.imageUrl),
+    )).toList();
+    queue.add(mediaItems);
+    if (!_queueController.isClosed) {
+      _queueController.add(List.unmodifiable(_queue));
+    }
+  }
+
+  Future<void> addToQueue(Episode episode, {bool playNext = false}) async {
+    await _db.addToQueue(episode, playNext: playNext);
+    _queue = await _db.getQueue();
+    _syncMediaItemQueue();
+  }
+
+  Future<void> removeFromQueue(int episodeId) async {
+    await _db.removeFromQueue(episodeId);
+    _queue = await _db.getQueue();
+    _syncMediaItemQueue();
+  }
+
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {
+    await _db.reorderQueue(oldIndex, newIndex);
+    _queue = await _db.getQueue();
+    _syncMediaItemQueue();
+  }
+
+  Future<void> clearQueue() async {
+    await _db.clearQueue();
+    _queue.clear();
+    _syncMediaItemQueue();
+  }
+
+  Future<void> playNextInQueue() async {
+    if (_queue.isEmpty) return;
+    final nextEpisode = _queue.first;
+    if (nextEpisode.id != null) {
+      await _db.removeFromQueue(nextEpisode.id!);
+    }
+    _queue = await _db.getQueue();
+    _syncMediaItemQueue();
+    await playEpisode(nextEpisode);
+  }
+
+  // --- SLEEP TIMER CONTROLS ---
+
+  void setSleepTimer(Duration duration) {
+    cancelSleepTimer();
+    _sleepTimerMode = SleepTimerMode.duration;
+    _sleepTimerRemaining = duration;
+    if (!_sleepTimerController.isClosed) {
+      _sleepTimerController.add(_sleepTimerRemaining);
+    }
+
+    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (_sleepTimerRemaining == null || _sleepTimerRemaining! <= const Duration(seconds: 1)) {
+        timer.cancel();
+        _sleepTimer = null;
+        _sleepTimerRemaining = null;
+        _sleepTimerMode = SleepTimerMode.none;
+        if (!_sleepTimerController.isClosed) {
+          _sleepTimerController.add(null);
+        }
+        await pause();
+        if (urlLoader == null) {
+          await _player.setVolume(1.0);
+        }
+      } else {
+        _sleepTimerRemaining = _sleepTimerRemaining! - const Duration(seconds: 1);
+        if (!_sleepTimerController.isClosed) {
+          _sleepTimerController.add(_sleepTimerRemaining);
+        }
+
+        // Smooth volume fade out in the last 15 seconds
+        if (_sleepTimerRemaining!.inSeconds <= 15) {
+          final fade = (_sleepTimerRemaining!.inSeconds / 15.0).clamp(0.05, 1.0);
+          if (urlLoader == null) {
+            await _player.setVolume(fade);
+          }
+        } else if (urlLoader == null && _player.volume < 1.0) {
+          await _player.setVolume(1.0);
+        }
+      }
+    });
+  }
+
+  void setSleepTimerEndOfEpisode() {
+    cancelSleepTimer();
+    _sleepTimerMode = SleepTimerMode.endOfEpisode;
+    _sleepTimerRemaining = null;
+    if (!_sleepTimerController.isClosed) {
+      _sleepTimerController.add(null);
+    }
+  }
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepTimerRemaining = null;
+    _sleepTimerMode = SleepTimerMode.none;
+    if (!_sleepTimerController.isClosed) {
+      _sleepTimerController.add(null);
+    }
+    if (urlLoader == null) {
+      _player.setVolume(1.0).catchError((_) {});
+    }
+  }
+
+  // --- SEEK DURATIONS & SETTINGS ---
+
+  Future<void> _loadSeekDurations() async {
+    try {
+      final storage = SecureStorageService();
+      final rew = await storage.read(SecureStorageService.keyRewindDuration);
+      final ff = await storage.read(SecureStorageService.keyFastForwardDuration);
+      if (rew != null) {
+        final parsed = int.tryParse(rew);
+        if (parsed != null && parsed > 0) rewindDuration = parsed;
+      }
+      if (ff != null) {
+        final parsed = int.tryParse(ff);
+        if (parsed != null && parsed > 0) fastForwardDuration = parsed;
+      }
+      if (!_seekDurationsController.isClosed) {
+        _seekDurationsController.add((rewind: rewindDuration, fastForward: fastForwardDuration));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setSeekDurations({int? rewind, int? fastForward}) async {
+    if (rewind != null && rewind > 0) {
+      rewindDuration = rewind;
+      await SecureStorageService().write(SecureStorageService.keyRewindDuration, rewind.toString());
+    }
+    if (fastForward != null && fastForward > 0) {
+      fastForwardDuration = fastForward;
+      await SecureStorageService().write(SecureStorageService.keyFastForwardDuration, fastForward.toString());
+    }
+    if (!_seekDurationsController.isClosed) {
+      _seekDurationsController.add((rewind: rewindDuration, fastForward: fastForwardDuration));
+    }
   }
 
   void dispose() {
     _stopPeriodicPositionSync();
+    _sleepTimer?.cancel();
     _playbackEventSub?.cancel();
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _player.dispose();
     _positionUpdateController.close();
+    _queueController.close();
+    _sleepTimerController.close();
+    _seekDurationsController.close();
+    _playbackErrorController.close();
   }
+
 }

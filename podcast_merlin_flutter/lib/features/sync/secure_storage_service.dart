@@ -16,6 +16,8 @@ class SecureStorageService {
   static const String keyLastSubscriptionTimestamp = 'last_subscription_timestamp';
   static const String keyPodcastIndexApiKey = 'podcast_index_api_key';
   static const String keyPodcastIndexApiSecret = 'podcast_index_api_secret';
+  static const String keyRewindDuration = 'playback_rewind_duration';
+  static const String keyFastForwardDuration = 'playback_fast_forward_duration';
 
   Future<void> write(String key, String value) async {
     try {

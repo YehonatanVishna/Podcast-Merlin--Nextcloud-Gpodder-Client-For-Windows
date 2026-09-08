@@ -95,7 +95,7 @@ class TestAudioHandler extends MerlinAudioHandler {
 
   Future<void> updateEpisodePlaybackState(String mediaUrl, int position) async {
     final isPlayed = position > 0;
-    DatabaseHelper.instance.updateEpisodePlaybackState(mediaUrl, position, isPlayed: isPlayed);
+    await DatabaseHelper.instance.updateEpisodePlaybackState(mediaUrl, position, isPlayed: isPlayed);
   }
 }
 
@@ -396,7 +396,9 @@ void main() {
       await tester.pump();
 
       // Switch to episode 2
-      await audioHandler.playEpisode(ep2);
+      await tester.runAsync(() async {
+        await audioHandler.playEpisode(ep2);
+      });
       await tester.pump();
 
       // Ep1 should still retain its progress bar after switching

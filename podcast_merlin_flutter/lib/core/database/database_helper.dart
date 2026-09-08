@@ -115,6 +115,18 @@ class DatabaseHelper {
         }
       } catch (_) {}
 
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS playback_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episodeId INTEGER NOT NULL,
+            sortOrder INTEGER NOT NULL,
+            addedAt TEXT NOT NULL,
+            FOREIGN KEY (episodeId) REFERENCES episodes (id) ON DELETE CASCADE
+          )
+        ''');
+      } catch (_) {}
+
       _columnsDetected = true;
       _detectCompleter!.complete();
     } catch (e, stack) {
@@ -208,6 +220,16 @@ class DatabaseHelper {
         action TEXT NOT NULL,
         rssUrl TEXT NOT NULL,
         timestamp TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS playback_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        episodeId INTEGER NOT NULL,
+        sortOrder INTEGER NOT NULL,
+        addedAt TEXT NOT NULL,
+        FOREIGN KEY (episodeId) REFERENCES episodes (id) ON DELETE CASCADE
       )
     ''');
   }
@@ -1197,5 +1219,116 @@ class DatabaseHelper {
       where: 'id <= ?',
       whereArgs: [maxId],
     );
+  }
+
+  // PLAYBACK QUEUE CRUD OPERATIONS
+
+  Future<int> addToQueue(Episode episode, {bool playNext = false}) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+
+    int? episodeId = episode.id;
+    if (episodeId == null || episodeId <= 0) {
+      Episode? existing;
+      if (episode.guid.isNotEmpty) {
+        existing = await getEpisodeByGuid(episode.guid);
+      }
+      if (existing == null && episode.mediaUrl.isNotEmpty) {
+        existing = await getEpisodeByMediaUrl(episode.mediaUrl);
+      }
+      if (existing != null) {
+        episodeId = existing.id;
+      } else {
+        var epToInsert = episode;
+        if ((epToInsert.podcastId == null || epToInsert.podcastId! <= 0) && epToInsert.podcastRss.isNotEmpty) {
+          final pod = await getPodcastByRssUrl(epToInsert.podcastRss);
+          if (pod != null && pod.id != null) {
+            epToInsert = epToInsert.copyWith(podcastId: pod.id);
+          }
+        }
+        await insertEpisodes([epToInsert]);
+        final inserted = await getEpisodeByMediaUrl(epToInsert.mediaUrl);
+        episodeId = inserted?.id;
+      }
+    }
+
+    if (episodeId == null) return 0;
+
+    // Remove if already in queue to avoid duplicates
+    await db.delete('playback_queue', where: 'episodeId = ?', whereArgs: [episodeId]);
+
+    int sortOrder;
+    if (playNext) {
+      // Shift all existing items' sortOrder by +1
+      await db.rawUpdate('UPDATE playback_queue SET sortOrder = sortOrder + 1');
+      sortOrder = 0;
+    } else {
+      final maxResult = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT MAX(sortOrder) FROM playback_queue'),
+      ) ?? -1;
+      sortOrder = maxResult + 1;
+    }
+
+    return db.insert('playback_queue', {
+      'episodeId': episodeId,
+      'sortOrder': sortOrder,
+      'addedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<int> removeFromQueue(int episodeId) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.delete(
+      'playback_queue',
+      where: 'episodeId = ?',
+      whereArgs: [episodeId],
+    );
+  }
+
+  Future<List<Episode>> getQueue() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM playback_queue q
+      JOIN episodes e ON q.episodeId = e.id
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      ORDER BY q.sortOrder ASC, q.id ASC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<void> reorderQueue(int oldIndex, int newIndex) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final items = await db.query('playback_queue', orderBy: 'sortOrder ASC, id ASC');
+    if (items.isEmpty) return;
+    if (oldIndex < 0 || oldIndex >= items.length) return;
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex >= items.length) newIndex = items.length - 1;
+    if (oldIndex == newIndex) return;
+
+    final queueList = List<Map<String, dynamic>>.from(items);
+    final moved = queueList.removeAt(oldIndex);
+    queueList.insert(newIndex, moved);
+
+    final batch = db.batch();
+    for (int i = 0; i < queueList.length; i++) {
+      batch.update(
+        'playback_queue',
+        {'sortOrder': i},
+        where: 'id = ?',
+        whereArgs: [queueList[i]['id']],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<int> clearQueue() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.delete('playback_queue');
   }
 }
