@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +61,82 @@ class FakeSecureStorageService extends SecureStorageService {
   @override
   Future<void> delete(String key) async {
     _data.remove(key);
+  }
+}
+
+base class FakePlatformFile extends PlatformFile {
+  FakePlatformFile({
+    required this.name,
+    this.content = '',
+    this.pathString,
+  });
+
+  @override
+  final String name;
+
+  final String content;
+  final String? pathString;
+
+  @override
+  String? get path => pathString;
+
+  @override
+  Uri get uri => pathString != null ? Uri.file(pathString!) : Uri.parse('memory://$name');
+
+  @override
+  XFile get xFile => XFile.fromData(Uint8List.fromList(utf8.encode(content)), name: name);
+
+  @override
+  int? lengthSync() => utf8.encode(content).length;
+
+  @override
+  Future<int> length() async => utf8.encode(content).length;
+
+  @override
+  Future<Uint8List> readAsBytes() async => Uint8List.fromList(utf8.encode(content));
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(Uint8List.fromList(utf8.encode(content)));
+}
+
+class FakeFilePickerPlatform extends FilePickerPlatform {
+  List<PlatformFile> pickedFilesResult = [];
+  Uri? saveFileResult;
+  String? lastSavedFileName;
+  Uint8List? lastSavedBytes;
+
+  @override
+  Future<List<PlatformFile>> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    return pickedFilesResult;
+  }
+
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    lastSavedFileName = fileName;
+    lastSavedBytes = bytes;
+    return saveFileResult;
   }
 }
 
@@ -1255,12 +1335,32 @@ void main() {
       expect(find.text('Import OPML'), findsOneWidget);
     });
 
-    testWidgets('Tapping Export OPML displays dialog with valid XML content and copy button', (tester) async {
+    testWidgets('Tapping Export OPML triggers native file save and displays feedback snackbar', (tester) async {
       tester.view.physicalSize = const Size(1280, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
+      });
+
+      final originalPicker = FilePickerPlatform.instance;
+      final fakePicker = FakeFilePickerPlatform();
+      fakePicker.saveFileResult = Uri.file('/tmp/exported_podcasts.opml');
+      FilePickerPlatform.instance = fakePicker;
+      addTearDown(() {
+        FilePickerPlatform.instance = originalPicker;
+      });
+
+      final testPodcast = Podcast(
+        rssUrl: 'https://example.com/export_test.xml',
+        title: 'Exported Podcast',
+        description: 'Testing export to file',
+        imageUrl: '',
+        link: 'https://example.com/export_test',
+        lastUpdated: DateTime.now(),
+      );
+      await tester.runAsync(() async {
+        await db.insertOrUpdatePodcast(testPodcast);
       });
 
       final audioHandler = MockAudioHandler(db: db);
@@ -1285,29 +1385,46 @@ void main() {
       final exportBtn = find.text('Export OPML');
       await tester.tap(exportBtn);
       await tester.runAsync(() async {
-        await Future.delayed(const Duration(milliseconds: 200));
+        await Future.delayed(const Duration(milliseconds: 300));
       });
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(seconds: 1));
 
-      // Verify dialog opened with XML content and action buttons
-      expect(find.text('OPML 2.0 XML:'), findsOneWidget);
-      expect(find.text('Copy to Clipboard'), findsOneWidget);
-      expect(find.text('Close'), findsOneWidget);
+      // Verify file picker saveFile was called with OPML XML bytes
+      expect(fakePicker.lastSavedFileName, equals('subscriptions.opml'));
+      expect(fakePicker.lastSavedBytes, isNotNull);
+      final xmlString = utf8.decode(fakePicker.lastSavedBytes!);
+      expect(xmlString, contains('Exported Podcast'));
+      expect(xmlString, contains('https://example.com/export_test.xml'));
 
-      // Close dialog
-      await tester.tap(find.text('Close'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('OPML 2.0 XML:'), findsNothing);
+      // Verify success SnackBar was shown with saved file name
+      expect(find.textContaining('Exported'), findsOneWidget);
+      expect(find.textContaining('exported_podcasts.opml'), findsOneWidget);
     });
 
-    testWidgets('Tapping Import OPML displays dialog with live feed preview', (tester) async {
+    testWidgets('Tapping Import OPML displays file preview dialog and imports feeds into database', (tester) async {
       tester.view.physicalSize = const Size(1280, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
+      });
+
+      final originalPicker = FilePickerPlatform.instance;
+      final fakePicker = FakeFilePickerPlatform();
+      const opmlContent = '''
+<opml version="2.0">
+  <head><title>Test Feeds</title></head>
+  <body>
+    <outline text="File Feed Show" title="File Feed Show" xmlUrl="https://example.com/filefeed.xml" htmlUrl="https://example.com" />
+  </body>
+</opml>''';
+      fakePicker.pickedFilesResult = [
+        FakePlatformFile(name: 'my_subscriptions.opml', content: opmlContent),
+      ];
+      FilePickerPlatform.instance = fakePicker;
+      addTearDown(() {
+        FilePickerPlatform.instance = originalPicker;
       });
 
       final audioHandler = MockAudioHandler(db: db);
@@ -1331,30 +1448,118 @@ void main() {
 
       final importBtn = find.text('Import OPML');
       await tester.tap(importBtn);
-      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify import dialog
-      expect(find.text('Import Subscriptions from OPML'), findsOneWidget);
-      expect(find.text('Paste OPML 2.0 XML or file content below:'), findsOneWidget);
-      expect(find.text('Paste valid OPML XML above to preview feeds'), findsOneWidget);
+      // Verify file-based preview and confirmation dialog
+      expect(find.text('Import Subscriptions'), findsOneWidget);
+      expect(find.text('my_subscriptions.opml'), findsOneWidget);
+      expect(find.textContaining('Found 1 podcast subscription'), findsOneWidget);
+      expect(find.text('File Feed Show'), findsOneWidget);
+      expect(find.text('https://example.com/filefeed.xml'), findsOneWidget);
       expect(find.text('Sync new feeds with gPodder'), findsOneWidget);
+      expect(find.text('Import (1)'), findsOneWidget);
 
-      // Enter valid OPML snippet
-      const opmlInput = '''<opml version="2.0"><body><outline title="Live Show" xmlUrl="https://example.com/liveshow.xml" /></body></opml>''';
-      await tester.enterText(find.byType(TextField).last, opmlInput);
+      // Confirm import
+      await tester.tap(find.text('Import (1)'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // Dialog dismisses and returns
+
+      // Allow background SQLite and Riverpod async tasks to process
+      for (int i = 0; i < 20; i++) {
+        await tester.runAsync(() async {
+          await Future.delayed(const Duration(milliseconds: 100));
+        });
+        await tester.pump();
+        if (find.textContaining('Successfully imported').evaluate().isNotEmpty) {
+          break;
+        }
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Verify dialog dismissed and success feedback shown
+      expect(find.text('Import Subscriptions'), findsNothing);
+      expect(
+        find.textContaining('Successfully imported 1 podcast(s) from "my_subscriptions.opml"'),
+        findsOneWidget,
+      );
+
+      // Verify database updated with new podcast
+      Podcast? savedInDb;
+      await tester.runAsync(() async {
+        savedInDb = await db.getPodcastByUrl('https://example.com/filefeed.xml');
+      });
+      expect(savedInDb, isNotNull);
+      expect(savedInDb!.title, equals('File Feed Show'));
+    });
+
+    testWidgets('Tapping Import OPML and canceling dialog does not import feeds', (tester) async {
+      tester.view.physicalSize = const Size(1280, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final originalPicker = FilePickerPlatform.instance;
+      final fakePicker = FakeFilePickerPlatform();
+      const opmlContent = '''
+<opml version="2.0">
+  <body>
+    <outline title="Cancelled Feed" xmlUrl="https://example.com/cancelled.xml" />
+  </body>
+</opml>''';
+      fakePicker.pickedFilesResult = [
+        FakePlatformFile(name: 'cancel_test.opml', content: opmlContent),
+      ];
+      FilePickerPlatform.instance = fakePicker;
+      addTearDown(() {
+        FilePickerPlatform.instance = originalPicker;
+      });
+
+      final audioHandler = MockAudioHandler(db: db);
+      final fakeStorage = FakeSecureStorageService();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            audioHandlerProvider.overrideWithValue(audioHandler),
+            secureStorageProvider.overrideWithValue(fakeStorage),
+          ],
+          child: const MaterialApp(
+            home: SettingsView(),
+          ),
+        ),
+      );
+
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Live preview updates with count
-      expect(find.textContaining('Detected 1 podcast(s):'), findsOneWidget);
-      expect(find.textContaining('• Live Show'), findsOneWidget);
-      expect(find.text('Import (1)'), findsOneWidget);
+      final importBtn = find.text('Import OPML');
+      await tester.tap(importBtn);
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 300));
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-      // Cancel dialog
+      expect(find.text('Import Subscriptions'), findsOneWidget);
+
+      // Tap Cancel
       await tester.tap(find.text('Cancel'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Import Subscriptions from OPML'), findsNothing);
+
+      expect(find.text('Import Subscriptions'), findsNothing);
+      Podcast? notInDb;
+      await tester.runAsync(() async {
+        notInDb = await db.getPodcastByUrl('https://example.com/cancelled.xml');
+      });
+      expect(notInDb, isNull);
     });
   });
 }

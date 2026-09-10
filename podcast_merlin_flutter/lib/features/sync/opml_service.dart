@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:xml/xml.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/podcast.dart';
@@ -34,6 +38,20 @@ class OpmlOutline {
 
   @override
   int get hashCode => Object.hash(title, xmlUrl, htmlUrl, text, description);
+}
+
+class OpmlFileResult {
+  final String fileName;
+  final String? filePath;
+  final String xmlContent;
+  final List<OpmlOutline> outlines;
+
+  const OpmlFileResult({
+    required this.fileName,
+    this.filePath,
+    required this.xmlContent,
+    required this.outlines,
+  });
 }
 
 class OpmlService {
@@ -195,6 +213,97 @@ class OpmlService {
 
     return imported;
   }
+
+  /// Opens a native file picker dialog to choose an OPML/XML file, reads its contents,
+  /// and returns an [OpmlFileResult] containing the parsed outlines.
+  /// Returns `null` if the user cancels or an error occurs.
+  static Future<OpmlFileResult?> pickOpmlFile({
+    FilePickerPlatform? filePicker,
+  }) async {
+    try {
+      final picker = filePicker ?? FilePickerPlatform.instance;
+      final result = await picker.pickFiles(
+        dialogTitle: 'Select OPML File to Import',
+        type: FileType.custom,
+        allowedExtensions: ['opml', 'xml'],
+      );
+
+      if (result.isEmpty) {
+        return null;
+      }
+
+      final file = result.first;
+      String xmlContent;
+
+      if (file.path != null && file.path!.isNotEmpty) {
+        final ioFile = File(file.path!);
+        if (await ioFile.exists()) {
+          xmlContent = await ioFile.readAsString();
+        } else {
+          final bytes = await file.readAsBytes();
+          try {
+            xmlContent = utf8.decode(bytes);
+          } catch (_) {
+            xmlContent = latin1.decode(bytes);
+          }
+        }
+      } else {
+        final bytes = await file.readAsBytes();
+        try {
+          xmlContent = utf8.decode(bytes);
+        } catch (_) {
+          xmlContent = latin1.decode(bytes);
+        }
+      }
+
+      final outlines = parseOpml(xmlContent);
+      return OpmlFileResult(
+        fileName: file.name,
+        filePath: file.path,
+        xmlContent: xmlContent,
+        outlines: outlines,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Exports the given [podcasts] into an OPML 2.0 XML file using the native file save dialog.
+  /// Returns the saved file path/URI string, or `null` if cancelled or empty.
+  static Future<String?> exportOpmlToFile({
+    required List<Podcast> podcasts,
+    String? defaultFileName,
+    FilePickerPlatform? filePicker,
+  }) async {
+    if (podcasts.isEmpty) return null;
+
+    try {
+      final xmlContent = generateOpml(podcasts: podcasts);
+      final bytes = Uint8List.fromList(utf8.encode(xmlContent));
+
+      final fileName = defaultFileName ?? 'subscriptions.opml';
+      final picker = filePicker ?? FilePickerPlatform.instance;
+
+      final savedUri = await picker.saveFile(
+        dialogTitle: 'Export Subscriptions to OPML',
+        fileName: fileName,
+        bytes: bytes,
+        mimeType: 'text/x-opml',
+      );
+
+      if (savedUri == null) return null;
+
+      if (savedUri.scheme == 'file') {
+        return savedUri.toFilePath();
+      } else if (savedUri.scheme.isEmpty) {
+        return savedUri.path;
+      } else {
+        return savedUri.toString();
+      }
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 // Top-level convenience wrappers matching prompt signatures
@@ -212,3 +321,18 @@ Future<List<Podcast>> importOpml(
   bool syncWithServer = true,
 }) =>
     OpmlService.importOpml(xmlContent, db, syncWithServer: syncWithServer);
+
+Future<OpmlFileResult?> pickOpmlFile({FilePickerPlatform? filePicker}) =>
+    OpmlService.pickOpmlFile(filePicker: filePicker);
+
+Future<String?> exportOpmlToFile({
+  required List<Podcast> podcasts,
+  String? defaultFileName,
+  FilePickerPlatform? filePicker,
+}) =>
+    OpmlService.exportOpmlToFile(
+      podcasts: podcasts,
+      defaultFileName: defaultFileName,
+      filePicker: filePicker,
+    );
+
