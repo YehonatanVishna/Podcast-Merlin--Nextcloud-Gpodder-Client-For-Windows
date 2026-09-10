@@ -85,6 +85,32 @@ class DatabaseHelper {
         _mediaUrlCol = 'media_url';
       }
 
+      if (!epCols.contains('downloadPath')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN downloadPath TEXT;');
+        } catch (_) {}
+      }
+      if (!epCols.contains('downloadStatus')) {
+        try {
+          await db.execute("ALTER TABLE episodes ADD COLUMN downloadStatus TEXT NOT NULL DEFAULT 'none';");
+        } catch (_) {}
+      }
+      if (!epCols.contains('downloadProgress')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN downloadProgress REAL NOT NULL DEFAULT 0.0;');
+        } catch (_) {}
+      }
+      if (!epCols.contains('downloadedBytes')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN downloadedBytes INTEGER NOT NULL DEFAULT 0;');
+        } catch (_) {}
+      }
+      if (!epCols.contains('totalBytes')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN totalBytes INTEGER NOT NULL DEFAULT 0;');
+        } catch (_) {}
+      }
+
       final podcastInfo = await db.rawQuery('PRAGMA table_info(podcasts)');
       final podCols = podcastInfo.map((row) => row['name'].toString()).toSet();
       if (podCols.contains('rssUrl')) {
@@ -204,6 +230,11 @@ class DatabaseHelper {
         isPlayed INTEGER DEFAULT 0,
         isStarred INTEGER NOT NULL DEFAULT 0,
         imageUrl TEXT,
+        downloadPath TEXT,
+        downloadStatus TEXT NOT NULL DEFAULT 'none',
+        downloadProgress REAL NOT NULL DEFAULT 0.0,
+        downloadedBytes INTEGER NOT NULL DEFAULT 0,
+        totalBytes INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (podcastId) REFERENCES podcasts (id) ON DELETE CASCADE,
         UNIQUE (podcastId, guid)
       )
@@ -398,6 +429,20 @@ class DatabaseHelper {
         final finalIsPlayed = existing.isPlayed || episode.isPlayed;
         final finalIsStarred = existing.isStarred || episode.isStarred;
 
+        final finalDownloadPath = episode.downloadPath ?? existing.downloadPath;
+        final finalDownloadStatus = episode.downloadStatus != DownloadStatus.none
+            ? episode.downloadStatus
+            : existing.downloadStatus;
+        final finalDownloadProgress = episode.downloadProgress > 0.0
+            ? episode.downloadProgress
+            : existing.downloadProgress;
+        final finalDownloadedBytes = episode.downloadedBytes > 0
+            ? episode.downloadedBytes
+            : existing.downloadedBytes;
+        final finalTotalBytes = episode.totalBytes > 0
+            ? episode.totalBytes
+            : existing.totalBytes;
+
         final adaptedMap = <String, dynamic>{
           _podcastIdCol: episode.podcastId,
           'guid': episode.guid,
@@ -410,6 +455,11 @@ class DatabaseHelper {
           _isPlayedCol: finalIsPlayed ? 1 : 0,
           _isStarredCol: finalIsStarred ? 1 : 0,
           'imageUrl': episode.imageUrl.isNotEmpty ? episode.imageUrl : existing.imageUrl,
+          'downloadPath': finalDownloadPath,
+          'downloadStatus': finalDownloadStatus.name,
+          'downloadProgress': finalDownloadProgress,
+          'downloadedBytes': finalDownloadedBytes,
+          'totalBytes': finalTotalBytes,
         };
 
         batch.update(
@@ -433,6 +483,11 @@ class DatabaseHelper {
           _isPlayedCol: episode.isPlayed ? 1 : 0,
           _isStarredCol: episode.isStarred ? 1 : 0,
           'imageUrl': episode.imageUrl,
+          'downloadPath': episode.downloadPath,
+          'downloadStatus': episode.downloadStatus.name,
+          'downloadProgress': episode.downloadProgress,
+          'downloadedBytes': episode.downloadedBytes,
+          'totalBytes': episode.totalBytes,
         };
         batch.insert(
           'episodes',
@@ -479,6 +534,8 @@ class DatabaseHelper {
       whereClause += ' AND e.$_isPlayedCol = 0 AND e.position > 0 AND ((e.duration IS NULL OR e.duration = 0) OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.starred) {
       whereClause += ' AND e.$_isStarredCol = 1';
+    } else if (filter == EpisodeFilter.downloaded) {
+      whereClause += " AND e.downloadStatus = 'downloaded' AND e.downloadPath IS NOT NULL";
     }
 
     final query = '''
@@ -513,6 +570,8 @@ class DatabaseHelper {
       whereClause = 'e.$_isPlayedCol = 0 AND e.position > 0 AND ((e.duration IS NULL OR e.duration = 0) OR ((e.duration > 60 AND (e.duration - e.position) > 60) OR (e.duration <= 60 AND e.position < (CASE WHEN e.duration > 10 THEN e.duration - 10 ELSE e.duration END))))';
     } else if (filter == EpisodeFilter.starred) {
       whereClause = 'e.$_isStarredCol = 1';
+    } else if (filter == EpisodeFilter.downloaded) {
+      whereClause = "e.downloadStatus = 'downloaded' AND e.downloadPath IS NOT NULL";
     }
 
     final query = '''
@@ -527,6 +586,92 @@ class DatabaseHelper {
 
     final maps = await db.rawQuery(query, whereArgs);
     return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<int> updateEpisodeDownloadState(
+    int episodeId, {
+    required DownloadStatus status,
+    String? downloadPath,
+    double? progress,
+    int? downloadedBytes,
+    int? totalBytes,
+  }) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final values = <String, dynamic>{
+      'downloadStatus': status.name,
+      'downloadPath': ?downloadPath,
+      'downloadProgress': ?progress,
+      'downloadedBytes': ?downloadedBytes,
+      'totalBytes': ?totalBytes,
+    };
+    return db.update(
+      'episodes',
+      values,
+      where: 'id = ?',
+      whereArgs: [episodeId],
+    );
+  }
+
+  Future<int> clearEpisodeDownload(int episodeId) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.update(
+      'episodes',
+      {
+        'downloadStatus': DownloadStatus.none.name,
+        'downloadPath': null,
+        'downloadProgress': 0.0,
+        'downloadedBytes': 0,
+        'totalBytes': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [episodeId],
+    );
+  }
+
+  Future<List<Episode>> getDownloadedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE (LOWER(e.downloadStatus) = 'downloaded' OR (e.downloadPath IS NOT NULL AND e.downloadPath != ''))
+      ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<int> getTotalDownloadSizeBytes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final res = await db.rawQuery(
+      "SELECT SUM(downloadedBytes) as total FROM episodes WHERE LOWER(downloadStatus) = 'downloaded' OR (downloadPath IS NOT NULL AND downloadPath != '')",
+    );
+    if (res.isNotEmpty && res.first['total'] != null) {
+      final total = res.first['total'];
+      if (total is num) return total.toInt();
+      if (total is String) return int.tryParse(total) ?? 0;
+    }
+    return 0;
+  }
+
+  Future<int> clearAllDownloadedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.update(
+      'episodes',
+      {
+        'downloadStatus': DownloadStatus.none.name,
+        'downloadPath': null,
+        'downloadProgress': 0.0,
+        'downloadedBytes': 0,
+        'totalBytes': 0,
+      },
+      where: "downloadStatus = 'downloaded' OR downloadPath IS NOT NULL",
+    );
   }
 
   Future<List<Episode>> getAllUnplayedEpisodes() async {

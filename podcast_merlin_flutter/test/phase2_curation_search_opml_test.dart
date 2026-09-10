@@ -1319,6 +1319,8 @@ void main() {
             databaseProvider.overrideWithValue(db),
             audioHandlerProvider.overrideWithValue(audioHandler),
             secureStorageProvider.overrideWithValue(fakeStorage),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: const MaterialApp(
             home: SettingsView(),
@@ -1372,6 +1374,8 @@ void main() {
             databaseProvider.overrideWithValue(db),
             audioHandlerProvider.overrideWithValue(audioHandler),
             secureStorageProvider.overrideWithValue(fakeStorage),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: const MaterialApp(
             home: SettingsView(),
@@ -1436,6 +1440,8 @@ void main() {
             databaseProvider.overrideWithValue(db),
             audioHandlerProvider.overrideWithValue(audioHandler),
             secureStorageProvider.overrideWithValue(fakeStorage),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: const MaterialApp(
             home: SettingsView(),
@@ -1529,6 +1535,8 @@ void main() {
             databaseProvider.overrideWithValue(db),
             audioHandlerProvider.overrideWithValue(audioHandler),
             secureStorageProvider.overrideWithValue(fakeStorage),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
           ],
           child: const MaterialApp(
             home: SettingsView(),

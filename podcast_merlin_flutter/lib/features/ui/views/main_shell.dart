@@ -153,6 +153,10 @@ class MainShellState extends ConsumerState<MainShell> {
                   ),
                   selectedIndex: selectedIndex,
                   onDestinationSelected: (index) {
+                    if (index == 3) {
+                      ref.invalidate(downloadStorageUsageBytesProvider);
+                      ref.invalidate(downloadedEpisodesCountProvider);
+                    }
                     navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
                   labelType: NavigationRailLabelType.selected,
@@ -200,6 +204,10 @@ class MainShellState extends ConsumerState<MainShell> {
                   currentIndex: selectedIndex,
                   type: BottomNavigationBarType.fixed,
                   onTap: (index) {
+                    if (index == 3) {
+                      ref.invalidate(downloadStorageUsageBytesProvider);
+                      ref.invalidate(downloadedEpisodesCountProvider);
+                    }
                     navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
                   items: const [

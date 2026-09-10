@@ -204,8 +204,10 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
         case EpisodeFilter.finished:
           if (!e.isFinished) return false;
           break;
-        case EpisodeFilter.all:
         case EpisodeFilter.downloaded:
+          if (!e.isDownloaded) return false;
+          break;
+        case EpisodeFilter.all:
           break;
       }
 
@@ -367,7 +369,48 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
               episodesState.episodes.length,
             ),
           ),
-          if (episodesState.episodes.isEmpty)
+          if (activeFilter == EpisodeFilter.downloaded && displayedEpisodes.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.download_done_rounded,
+                        size: 48,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'No downloaded episodes yet',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Download episodes to listen to them offline.',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                            _localFilter = EpisodeFilter.all;
+                          });
+                          ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(EpisodeFilter.all);
+                        },
+                        child: const Text('Show All Episodes'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (episodesState.episodes.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(
@@ -386,12 +429,23 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.search_off, size: 48, color: Colors.grey),
+                      const Icon(
+                        Icons.search_off,
+                        size: 48,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(height: 12),
                       const Text(
                         'No episodes match your search / filter',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                       ),
+                      if (activeFilter == EpisodeFilter.downloaded) ...[
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Download episodes to listen to them offline.',
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       OutlinedButton(
                         onPressed: () {
@@ -428,6 +482,19 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                       onToggleStar: () => ref
                           .read(episodesNotifierProvider(widget.podcast?.id).notifier)
                           .toggleStar(ep),
+                      onDownload: () => ref
+                          .read(episodeDownloadServiceProvider)
+                          .startDownload(ep),
+                      onCancelDownload: () {
+                        if (ep.id != null) {
+                          ref
+                              .read(episodeDownloadServiceProvider)
+                              .cancelDownload(ep.id!);
+                        }
+                      },
+                      onDeleteDownload: () => ref
+                          .read(episodeDownloadServiceProvider)
+                          .deleteDownload(ep),
                     );
                   },
                   childCount: math.max(0, displayedEpisodes.length * 2 - 1),
@@ -660,6 +727,8 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   }
                 },
               ),
+              const SizedBox(height: 8),
+              _buildModalDownloadButton(context, modalCtx, effectiveEp),
               const SizedBox(height: 16),
               const Text(
                 'Description',
@@ -677,6 +746,66 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
       ),
     );
   }
+
+  Widget _buildModalDownloadButton(BuildContext context, BuildContext modalCtx, Episode ep) {
+    if (ep.isDownloaded) {
+      final mb = ep.downloadedBytes > 0
+          ? '${(ep.downloadedBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+          : 'Downloaded';
+      return OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+        icon: const Icon(Icons.delete_outline, color: Colors.red),
+        label: Text('Delete Download ($mb)'),
+        onPressed: () async {
+          Navigator.pop(modalCtx);
+          await ref.read(episodeDownloadServiceProvider).deleteDownload(ep);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Deleted download for "${ep.title}"')),
+            );
+          }
+        },
+      );
+    } else if (ep.isDownloading) {
+      final pct = (ep.downloadProgress * 100).toStringAsFixed(0);
+      return OutlinedButton.icon(
+        icon: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        label: Text('Downloading ($pct%) • Tap to Cancel'),
+        onPressed: () {
+          Navigator.pop(modalCtx);
+          if (ep.id != null) {
+            ref.read(episodeDownloadServiceProvider).cancelDownload(ep.id!);
+          }
+        },
+      );
+    } else if (ep.downloadStatus == DownloadStatus.failed) {
+      return OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
+        icon: const Icon(Icons.refresh, color: Colors.orange),
+        label: const Text('Download Failed • Retry'),
+        onPressed: () {
+          Navigator.pop(modalCtx);
+          ref.read(episodeDownloadServiceProvider).startDownload(ep);
+        },
+      );
+    } else {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.download_outlined),
+        label: const Text('Download Episode'),
+        onPressed: () {
+          Navigator.pop(modalCtx);
+          ref.read(episodeDownloadServiceProvider).startDownload(ep);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Starting download for "${ep.title}"')),
+          );
+        },
+      );
+    }
+  }
 }
 
 class _EpisodeTile extends StatelessWidget {
@@ -685,6 +814,9 @@ class _EpisodeTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onPlay;
   final VoidCallback onToggleStar;
+  final VoidCallback? onDownload;
+  final VoidCallback? onCancelDownload;
+  final VoidCallback? onDeleteDownload;
 
   const _EpisodeTile({
     required this.episode,
@@ -692,6 +824,9 @@ class _EpisodeTile extends StatelessWidget {
     required this.onTap,
     required this.onPlay,
     required this.onToggleStar,
+    this.onDownload,
+    this.onCancelDownload,
+    this.onDeleteDownload,
   });
 
   String _formatDuration(int seconds) {
@@ -702,6 +837,70 @@ class _EpisodeTile extends StatelessWidget {
       return '${d.inHours}:$minutes:$secs';
     }
     return '$minutes:$secs';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB'];
+    var i = 0;
+    double count = bytes.toDouble();
+    while (count >= 1024 && i < suffixes.length - 1) {
+      count /= 1024;
+      i++;
+    }
+    return '${count.toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  Widget _buildDownloadButton(BuildContext context) {
+    if (episode.isDownloaded) {
+      return IconButton(
+        icon: Icon(
+          Icons.download_done_rounded,
+          color: Theme.of(context).colorScheme.primary,
+          size: 22,
+        ),
+        tooltip: 'Downloaded (${_formatBytes(episode.downloadedBytes)})',
+        onPressed: onDeleteDownload,
+      );
+    } else if (episode.isDownloading) {
+      if (episode.downloadStatus == DownloadStatus.queued) {
+        return IconButton(
+          icon: const Icon(Icons.hourglass_top, size: 20, color: Colors.grey),
+          tooltip: 'Queued for download • Tap to cancel',
+          onPressed: onCancelDownload,
+        );
+      }
+      return IconButton(
+        icon: SizedBox(
+          width: 22,
+          height: 22,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: episode.downloadProgress > 0 ? episode.downloadProgress : null,
+                strokeWidth: 2.5,
+              ),
+              const Icon(Icons.close, size: 12),
+            ],
+          ),
+        ),
+        tooltip: 'Downloading (${(episode.downloadProgress * 100).toInt()}%) • Tap to cancel',
+        onPressed: onCancelDownload,
+      );
+    } else if (episode.downloadStatus == DownloadStatus.failed) {
+      return IconButton(
+        icon: const Icon(Icons.refresh, color: Colors.orange, size: 22),
+        tooltip: 'Download failed • Tap to retry',
+        onPressed: onDownload,
+      );
+    } else {
+      return IconButton(
+        icon: const Icon(Icons.download_outlined, size: 22),
+        tooltip: 'Download episode',
+        onPressed: onDownload,
+      );
+    }
   }
 
   @override
@@ -878,6 +1077,7 @@ class _EpisodeTile extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              _buildDownloadButton(context),
               IconButton(
                 icon: Icon(
                   episode.isStarred ? Icons.star : Icons.star_border,
@@ -907,7 +1107,13 @@ class _EpisodeTile extends StatelessWidget {
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'More options',
                 onSelected: (value) {
-                  if (value == 'star') {
+                  if (value == 'download') {
+                    onDownload?.call();
+                  } else if (value == 'cancel_download') {
+                    onCancelDownload?.call();
+                  } else if (value == 'delete_download') {
+                    onDeleteDownload?.call();
+                  } else if (value == 'star') {
                     onToggleStar();
                   } else if (value == 'play_next') {
                     audioHandler?.addToQueue(episode, playNext: true);
@@ -922,6 +1128,39 @@ class _EpisodeTile extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => [
+                  if (episode.isDownloaded)
+                    const PopupMenuItem(
+                      value: 'delete_download',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                          SizedBox(width: 12),
+                          Text('Delete Download', style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    )
+                  else if (episode.isDownloading)
+                    const PopupMenuItem(
+                      value: 'cancel_download',
+                      child: Row(
+                        children: [
+                          Icon(Icons.close, size: 20),
+                          SizedBox(width: 12),
+                          Text('Cancel Download'),
+                        ],
+                      ),
+                    )
+                  else
+                    const PopupMenuItem(
+                      value: 'download',
+                      child: Row(
+                        children: [
+                          Icon(Icons.download_outlined, size: 20),
+                          SizedBox(width: 12),
+                          Text('Download Episode'),
+                        ],
+                      ),
+                    ),
                   PopupMenuItem(
                     value: 'star',
                     child: Row(

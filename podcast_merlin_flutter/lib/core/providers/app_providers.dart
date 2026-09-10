@@ -12,10 +12,19 @@ import '../../features/sync/secure_storage_service.dart';
 import '../../features/sync/sync_service.dart';
 import '../../features/discovery/multisource_search_service.dart';
 import '../../features/discovery/discovery_notifier.dart';
+import '../../features/downloads/episode_download_service.dart';
 
 final databaseProvider = Provider<DatabaseHelper>((ref) => DatabaseHelper.instance);
 final secureStorageProvider = Provider<SecureStorageService>((ref) => SecureStorageService());
 final apiClientProvider = Provider<GPodderApiClient>((ref) => GPodderApiClient());
+
+final episodeDownloadServiceProvider = Provider<EpisodeDownloadService>((ref) {
+  final service = EpisodeDownloadService(
+    db: ref.watch(databaseProvider),
+  );
+  ref.onDispose(() => service.dispose());
+  return service;
+});
 
 final syncServiceProvider = Provider<SyncService>((ref) {
   return SyncService(
@@ -249,13 +258,20 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
   final DatabaseHelper _db;
   final SyncStatusNotifier _syncStatusNotifier;
   final MerlinAudioHandler _audioHandler;
+  final EpisodeDownloadService? _downloadService;
   final int? _podcastId;
   StreamSubscription<PositionUpdateEvent>? _posSub;
   StreamSubscription<SyncStatusState>? _syncSub;
+  StreamSubscription<DownloadTaskEvent>? _downloadSub;
   static const int pageSize = 25;
 
-  EpisodesNotifier(this._db, this._syncStatusNotifier, this._audioHandler, this._podcastId)
-      : super(const EpisodesState(isLoading: true)) {
+  EpisodesNotifier(
+    this._db,
+    this._syncStatusNotifier,
+    this._audioHandler,
+    this._podcastId, {
+    this._downloadService,
+  }) : super(const EpisodesState(isLoading: true)) {
     loadEpisodes();
     _posSub = _audioHandler.onPositionUpdated.listen((event) {
       updateEpisodeProgress(event.mediaUrl, event.position, event.isPlayed);
@@ -265,13 +281,40 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
         loadEpisodes(silent: true);
       }
     });
+    _downloadSub = _downloadService?.onDownloadEvent.listen((event) {
+      _handleDownloadEvent(event);
+    });
   }
 
   @override
   void dispose() {
     _posSub?.cancel();
     _syncSub?.cancel();
+    _downloadSub?.cancel();
     super.dispose();
+  }
+
+  void _handleDownloadEvent(DownloadTaskEvent event) {
+    if (!mounted || state.episodes.isEmpty) return;
+    final index = state.episodes.indexWhere(
+      (e) =>
+          (e.id != null && e.id == event.episodeId) ||
+          (e.mediaUrl.isNotEmpty && e.mediaUrl == event.mediaUrl),
+    );
+    if (index != -1) {
+      final ep = state.episodes[index];
+      final updatedList = List<Episode>.from(state.episodes);
+      updatedList[index] = ep.copyWith(
+        downloadStatus: event.status,
+        downloadProgress: event.progress,
+        downloadedBytes: event.downloadedBytes,
+        totalBytes: event.totalBytes,
+        downloadPath: event.downloadPath ?? (event.status == DownloadStatus.none ? null : ep.downloadPath),
+      );
+      state = state.copyWith(episodes: updatedList);
+    } else if (event.status == DownloadStatus.downloaded && state.filter == EpisodeFilter.downloaded) {
+      loadEpisodes(silent: true);
+    }
   }
 
   void updateEpisodeProgress(String mediaUrl, int position, bool isPlayed) {
@@ -388,7 +431,36 @@ final episodesNotifierProvider = StateNotifierProvider.autoDispose
     ref.watch(syncStatusNotifierProvider.notifier),
     ref.watch(audioHandlerProvider),
     podcastId,
+    downloadService: ref.watch(episodeDownloadServiceProvider),
   );
+});
+
+final downloadedEpisodesCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final downloadService = ref.watch(episodeDownloadServiceProvider);
+
+  final sub = downloadService.onDownloadEvent.listen((event) {
+    if (event.status == DownloadStatus.downloaded || event.status == DownloadStatus.none) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(sub.cancel);
+
+  final downloaded = await db.getDownloadedEpisodes();
+  return downloaded.length;
+});
+
+final downloadStorageUsageBytesProvider = FutureProvider.autoDispose<int>((ref) async {
+  final service = ref.watch(episodeDownloadServiceProvider);
+
+  final sub = service.onDownloadEvent.listen((event) {
+    if (event.status == DownloadStatus.downloaded || event.status == DownloadStatus.none) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(sub.cancel);
+
+  return service.getTotalDownloadStorageBytes();
 });
 
 final multisourceSearchServiceProvider = Provider<MultisourceSearchService>((ref) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
@@ -348,9 +349,15 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
       LinuxMprisService.instance.updateState(initialLoadingState, newItem);
     }
 
+    final localPath = epToPlay.downloadPath;
+    final bool hasLocalFile = !kIsWeb &&
+        localPath != null &&
+        localPath.isNotEmpty &&
+        File(localPath).existsSync();
+
     if (urlLoader != null) {
       try {
-        await urlLoader!(epToPlay.mediaUrl);
+        await urlLoader!(hasLocalFile ? localPath : epToPlay.mediaUrl);
       } catch (_) {}
       final readyState = initialLoadingState.copyWith(
         playing: true,
@@ -379,7 +386,18 @@ class MerlinAudioHandler extends BaseAudioHandler with SeekHandler {
     }
 
     try {
-      await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
+      if (hasLocalFile) {
+        try {
+          await _player.setFilePath(localPath).timeout(const Duration(seconds: 30));
+        } catch (e) {
+          if (kDebugMode) {
+            print('Failed to play local file $localPath, falling back to network stream: $e');
+          }
+          await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
+        }
+      } else {
+        await _player.setUrl(epToPlay.mediaUrl).timeout(const Duration(seconds: 30));
+      }
       if (epToPlay.position > 0 && !epToPlay.isFinished && epToPlay.position < (epToPlay.duration - 5)) {
         await _player.seek(Duration(seconds: epToPlay.position));
       } else {

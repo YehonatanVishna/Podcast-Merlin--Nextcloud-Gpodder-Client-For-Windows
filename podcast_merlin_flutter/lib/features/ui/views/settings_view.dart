@@ -46,6 +46,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       _fastForwardSeconds = int.parse(ff);
     }
 
+    ref.invalidate(downloadStorageUsageBytesProvider);
+    ref.invalidate(downloadedEpisodesCountProvider);
+
     setState(() {
       _isLoading = false;
     });
@@ -424,11 +427,136 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 16),
+                const Text(
+                  'Downloads & Storage',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Manage offline podcast episodes downloaded to your device.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                _buildDownloadsStorageCard(context),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildDownloadsStorageCard(BuildContext context) {
+    final storageAsync = ref.watch(downloadStorageUsageBytesProvider);
+    final countAsync = ref.watch(downloadedEpisodesCountProvider);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.folder_outlined, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Offline Storage Used',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 2),
+                      storageAsync.when(
+                        data: (bytes) {
+                          final count = countAsync.valueOrNull ?? 0;
+                          return Text(
+                            '${_formatBytes(bytes)} across $count downloaded ${count == 1 ? 'episode' : 'episodes'}',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          );
+                        },
+                        loading: () => const Text('Calculating...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        error: (err, st) => const Text('Storage calculation error', style: TextStyle(fontSize: 12, color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20),
+                  tooltip: 'Refresh storage info',
+                  onPressed: () {
+                    ref.invalidate(downloadStorageUsageBytesProvider);
+                    ref.invalidate(downloadedEpisodesCountProvider);
+                  },
+                ),
+                const SizedBox(width: 4),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red, size: 18),
+                  label: const Text('Clear All'),
+                  onPressed: () => _showClearAllDownloadsDialog(context),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB'];
+    var i = 0;
+    double count = bytes.toDouble();
+    while (count >= 1024 && i < suffixes.length - 1) {
+      count /= 1024;
+      i++;
+    }
+    return '${count.toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  Future<void> _showClearAllDownloadsDialog(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear All Downloads?'),
+        content: const Text(
+          'This will delete all downloaded audio files from your device. Your playback history and subscriptions will be kept.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final deleted = await ref.read(episodeDownloadServiceProvider).clearAllDownloads();
+      ref.invalidate(downloadStorageUsageBytesProvider);
+      ref.invalidate(downloadedEpisodesCountProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cleared $deleted downloaded audio ${deleted == 1 ? 'file' : 'files'}')),
+        );
+      }
+    }
   }
 }
