@@ -5,6 +5,7 @@ import '../../../core/providers/app_providers.dart';
 import '../../sync/opml_ui_helper.dart';
 import '../../sync/secure_storage_service.dart';
 import '../widgets/sync_error_banner.dart';
+import '../../../main.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
   const SettingsView({super.key});
@@ -507,6 +508,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   onPressed: () => _showClearAllDownloadsDialog(context),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                icon: const Icon(Icons.download_rounded, size: 18),
+                label: const Text('Open Download Center'),
+                onPressed: () {
+                  PodcastMerlinApp.mainShellKey.currentState?.navigateTo(2);
+                },
+              ),
             ),
           ],
         ),

@@ -26,7 +26,9 @@ class PlayerDock extends ConsumerWidget {
         }
 
         final title = item?.title ?? episode?.title ?? 'Playing Podcast';
-        final imageUrl = item?.artUri?.toString() ?? episode?.imageUrl ?? '';
+        final imageUrl = (episode?.imageUrl.isNotEmpty == true)
+            ? episode!.imageUrl
+            : (item?.artUri?.toString() ?? '');
         final totalDuration = item?.duration ?? Duration(seconds: episode?.duration ?? 0);
 
         return StreamBuilder<PlaybackState>(

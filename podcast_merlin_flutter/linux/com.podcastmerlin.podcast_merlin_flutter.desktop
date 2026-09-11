@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Podcast Merlin
+GenericName=Podcast Client
+Comment=Nextcloud & gPodder Podcast Client
+Exec=podcast_merlin_flutter %U
+Icon=com.podcastmerlin.podcast_merlin_flutter
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=com.podcastmerlin.podcast_merlin_flutter

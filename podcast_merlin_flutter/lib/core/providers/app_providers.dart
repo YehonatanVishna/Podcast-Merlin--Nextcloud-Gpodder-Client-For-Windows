@@ -22,6 +22,7 @@ final episodeDownloadServiceProvider = Provider<EpisodeDownloadService>((ref) {
   final service = EpisodeDownloadService(
     db: ref.watch(databaseProvider),
   );
+  service.reconcileOnStartup();
   ref.onDispose(() => service.dispose());
   return service;
 });
@@ -309,10 +310,12 @@ class EpisodesNotifier extends StateNotifier<EpisodesState> {
         downloadProgress: event.progress,
         downloadedBytes: event.downloadedBytes,
         totalBytes: event.totalBytes,
+        downloadError: event.error,
+        clearDownloadError: event.status != DownloadStatus.failed,
         downloadPath: event.downloadPath ?? (event.status == DownloadStatus.none ? null : ep.downloadPath),
       );
       state = state.copyWith(episodes: updatedList);
-    } else if (event.status == DownloadStatus.downloaded && state.filter == EpisodeFilter.downloaded) {
+    } else if ((event.status == DownloadStatus.downloaded || event.status == DownloadStatus.none) && state.filter == EpisodeFilter.downloaded) {
       loadEpisodes(silent: true);
     }
   }
@@ -461,6 +464,52 @@ final downloadStorageUsageBytesProvider = FutureProvider.autoDispose<int>((ref) 
   ref.onDispose(sub.cancel);
 
   return service.getTotalDownloadStorageBytes();
+});
+
+final activeDownloadsCountProvider = StreamProvider.autoDispose<int>((ref) async* {
+  final service = ref.watch(episodeDownloadServiceProvider);
+  yield service.activeAndQueuedCount;
+  await for (final _ in service.onDownloadEvent) {
+    yield service.activeAndQueuedCount;
+  }
+});
+
+final downloadTasksStreamProvider =
+    StreamProvider.autoDispose<Map<int, DownloadTaskEvent>>((ref) async* {
+  final service = ref.watch(episodeDownloadServiceProvider);
+  yield service.currentTasks;
+  await for (final _ in service.onDownloadEvent) {
+    yield service.currentTasks;
+  }
+});
+
+final downloadedEpisodesListProvider =
+    FutureProvider.autoDispose<List<Episode>>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final service = ref.watch(episodeDownloadServiceProvider);
+  final sub = service.onDownloadEvent.listen((event) {
+    if (event.status == DownloadStatus.downloaded || event.status == DownloadStatus.none) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(sub.cancel);
+  return db.getDownloadedEpisodes();
+});
+
+final failedEpisodesListProvider =
+    FutureProvider.autoDispose<List<Episode>>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final service = ref.watch(episodeDownloadServiceProvider);
+  final sub = service.onDownloadEvent.listen((event) {
+    if (event.status == DownloadStatus.failed ||
+        event.status == DownloadStatus.none ||
+        event.status == DownloadStatus.downloading ||
+        event.status == DownloadStatus.queued) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(sub.cancel);
+  return db.getFailedEpisodes();
 });
 
 final multisourceSearchServiceProvider = Provider<MultisourceSearchService>((ref) {

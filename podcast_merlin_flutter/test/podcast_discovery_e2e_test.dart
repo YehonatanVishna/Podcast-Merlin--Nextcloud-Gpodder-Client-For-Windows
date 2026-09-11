@@ -125,6 +125,12 @@ void main() {
             audioHandlerProvider.overrideWithValue(audioHandler),
             multisourceSearchServiceProvider.overrideWithValue(mockService),
             podcastsNotifierProvider.overrideWith((ref) => testPodcastsNotifier),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesListProvider.overrideWith((ref) => Future.value([])),
+            failedEpisodesListProvider.overrideWith((ref) => Future.value([])),
+            activeDownloadsCountProvider.overrideWith((ref) => Stream.value(0)),
+            downloadTasksStreamProvider.overrideWith((ref) => Stream.value({})),
           ],
           child: const PodcastMerlinApp(),
         ),
@@ -155,6 +161,10 @@ void main() {
 
       // Verify podcast now appears in Catalog
       expect(find.text('E2E Discovered Podcast'), findsOneWidget);
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pump(const Duration(seconds: 11));
     });
   });
 }

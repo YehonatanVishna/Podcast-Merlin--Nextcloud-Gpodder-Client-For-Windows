@@ -1,6 +1,6 @@
 enum EpisodeFilter { all, unplayed, inProgress, starred, finished, downloaded }
 
-enum DownloadStatus { none, queued, downloading, downloaded, failed }
+enum DownloadStatus { none, queued, downloading, downloaded, failed, paused }
 
 class Episode {
   final int? id;
@@ -21,6 +21,7 @@ class Episode {
   final double downloadProgress; // 0.0 to 1.0
   final int downloadedBytes;
   final int totalBytes;
+  final String? downloadError;
 
   const Episode({
     this.id,
@@ -41,10 +42,13 @@ class Episode {
     this.downloadProgress = 0.0,
     this.downloadedBytes = 0,
     this.totalBytes = 0,
+    this.downloadError,
   });
 
   bool get isDownloaded => downloadStatus == DownloadStatus.downloaded && downloadPath != null;
   bool get isDownloading => downloadStatus == DownloadStatus.downloading || downloadStatus == DownloadStatus.queued;
+  bool get isPaused => downloadStatus == DownloadStatus.paused;
+  bool get isFailed => downloadStatus == DownloadStatus.failed;
 
   double get progressPercentage {
     if (duration <= 0) return 0.0;
@@ -83,6 +87,8 @@ class Episode {
     double? downloadProgress,
     int? downloadedBytes,
     int? totalBytes,
+    String? downloadError,
+    bool clearDownloadError = false,
   }) {
     return Episode(
       id: id ?? this.id,
@@ -103,6 +109,7 @@ class Episode {
       downloadProgress: downloadProgress ?? this.downloadProgress,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
       totalBytes: totalBytes ?? this.totalBytes,
+      downloadError: clearDownloadError ? null : (downloadError ?? this.downloadError),
     );
   }
 
@@ -125,6 +132,7 @@ class Episode {
       'downloadProgress': downloadProgress,
       'downloadedBytes': downloadedBytes,
       'totalBytes': totalBytes,
+      'downloadError': downloadError,
     };
   }
 
@@ -200,6 +208,7 @@ class Episode {
       downloadProgress: _parseDouble(map['downloadProgress'] ?? map['download_progress']),
       downloadedBytes: _parseInt(map['downloadedBytes'] ?? map['downloaded_bytes']),
       totalBytes: _parseInt(map['totalBytes'] ?? map['total_bytes']),
+      downloadError: (map['downloadError'] ?? map['download_error']) as String?,
     );
   }
 }

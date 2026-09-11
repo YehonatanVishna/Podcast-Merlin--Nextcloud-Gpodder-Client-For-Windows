@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'podcast_catalog_view.dart';
 import 'episode_list_view.dart';
 import 'podcast_discovery_view.dart';
+import 'download_center_view.dart';
 import 'settings_view.dart';
 import '../widgets/player_dock.dart';
 import '../../../core/models/podcast.dart';
@@ -123,6 +124,8 @@ class MainShellState extends ConsumerState<MainShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 768;
+        final activeCountAsync = ref.watch(activeDownloadsCountProvider);
+        final activeCount = activeCountAsync.valueOrNull ?? 0;
 
         final pages = [
           PodcastCatalogView(
@@ -134,6 +137,7 @@ class MainShellState extends ConsumerState<MainShell> {
             podcast: selectedPodcast,
             onBackPressed: _historyIndex > 0 ? () => goBack() : null,
           ),
+          const DownloadCenterView(),
           const PodcastDiscoveryView(),
           const SettingsView(),
         ];
@@ -153,30 +157,47 @@ class MainShellState extends ConsumerState<MainShell> {
                   ),
                   selectedIndex: selectedIndex,
                   onDestinationSelected: (index) {
-                    if (index == 3) {
+                    if (index == 2 || index == 4) {
                       ref.invalidate(downloadStorageUsageBytesProvider);
                       ref.invalidate(downloadedEpisodesCountProvider);
+                      ref.invalidate(downloadedEpisodesListProvider);
+                      ref.invalidate(failedEpisodesListProvider);
                     }
                     navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
                   labelType: NavigationRailLabelType.selected,
-                  destinations: const [
-                    NavigationRailDestination(
+                  destinations: [
+                    const NavigationRailDestination(
                       icon: Icon(Icons.podcasts_outlined),
                       selectedIcon: Icon(Icons.podcasts),
                       label: Text('Catalog'),
                     ),
-                    NavigationRailDestination(
+                    const NavigationRailDestination(
                       icon: Icon(Icons.playlist_play_outlined),
                       selectedIcon: Icon(Icons.playlist_play),
                       label: Text('Episodes'),
                     ),
                     NavigationRailDestination(
+                      icon: activeCount > 0
+                          ? Badge.count(
+                              count: activeCount,
+                              child: const Icon(Icons.download_outlined),
+                            )
+                          : const Icon(Icons.download_outlined),
+                      selectedIcon: activeCount > 0
+                          ? Badge.count(
+                              count: activeCount,
+                              child: const Icon(Icons.download),
+                            )
+                          : const Icon(Icons.download),
+                      label: const Text('Downloads'),
+                    ),
+                    const NavigationRailDestination(
                       icon: Icon(Icons.explore_outlined),
                       selectedIcon: Icon(Icons.explore),
                       label: Text('Discover'),
                     ),
-                    NavigationRailDestination(
+                    const NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),
                       selectedIcon: Icon(Icons.settings),
                       label: Text('Settings'),
@@ -204,26 +225,37 @@ class MainShellState extends ConsumerState<MainShell> {
                   currentIndex: selectedIndex,
                   type: BottomNavigationBarType.fixed,
                   onTap: (index) {
-                    if (index == 3) {
+                    if (index == 2 || index == 4) {
                       ref.invalidate(downloadStorageUsageBytesProvider);
                       ref.invalidate(downloadedEpisodesCountProvider);
+                      ref.invalidate(downloadedEpisodesListProvider);
+                      ref.invalidate(failedEpisodesListProvider);
                     }
                     navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
                   },
-                  items: const [
-                    BottomNavigationBarItem(
+                  items: [
+                    const BottomNavigationBarItem(
                       icon: Icon(Icons.podcasts),
                       label: 'Catalog',
                     ),
-                    BottomNavigationBarItem(
+                    const BottomNavigationBarItem(
                       icon: Icon(Icons.playlist_play),
                       label: 'Episodes',
                     ),
                     BottomNavigationBarItem(
+                      icon: activeCount > 0
+                          ? Badge.count(
+                              count: activeCount,
+                              child: const Icon(Icons.download),
+                            )
+                          : const Icon(Icons.download),
+                      label: 'Downloads',
+                    ),
+                    const BottomNavigationBarItem(
                       icon: Icon(Icons.explore),
                       label: 'Discover',
                     ),
-                    BottomNavigationBarItem(
+                    const BottomNavigationBarItem(
                       icon: Icon(Icons.settings),
                       label: 'Settings',
                     ),

@@ -26,6 +26,8 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   EpisodeFilter? _localFilter;
+  bool _isSelectionMode = false;
+  final Set<int> _selectedEpisodeIds = <int>{};
 
   @override
   void initState() {
@@ -37,6 +39,8 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   void didUpdateWidget(covariant EpisodeListView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.podcast?.id != widget.podcast?.id) {
+      _isSelectionMode = false;
+      _selectedEpisodeIds.clear();
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0);
       }
@@ -73,6 +77,77 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
     });
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB'];
+    var i = 0;
+    double count = bytes.toDouble();
+    while (count >= 1024 && i < suffixes.length - 1) {
+      count /= 1024;
+      i++;
+    }
+    return '${count.toStringAsFixed(1)} ${suffixes[i]}';
+  }
+
+  Future<void> _confirmDeleteSelectedDownloads(List<Episode> displayedEpisodes) async {
+    final selectedEps = displayedEpisodes
+        .where((e) => e.id != null && _selectedEpisodeIds.contains(e.id))
+        .toList();
+    final downloadedEps = selectedEps.where((e) => e.isDownloaded).toList();
+
+    if (downloadedEps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('None of the selected episodes have downloaded audio files.')),
+      );
+      return;
+    }
+
+    final totalBytes = downloadedEps.fold<int>(0, (sum, e) => sum + e.downloadedBytes);
+    final sizeStr = totalBytes > 0 ? ' (${_formatBytes(totalBytes)})' : '';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${downloadedEps.length} Downloads?'),
+        content: Text(
+          'This will permanently delete ${downloadedEps.length} downloaded audio ${downloadedEps.length == 1 ? "file" : "files"}$sizeStr from your device storage. Playback history and subscriptions will be preserved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete (${downloadedEps.length})'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final service = ref.read(episodeDownloadServiceProvider);
+      final count = await service.deleteMultipleDownloads(downloadedEps);
+      if (!mounted) return;
+      ref.invalidate(downloadStorageUsageBytesProvider);
+      ref.invalidate(downloadedEpisodesListProvider);
+      ref.invalidate(downloadedEpisodesCountProvider);
+      setState(() {
+        _selectedEpisodeIds.clear();
+        _isSelectionMode = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Deleted $count downloaded ${count == 1 ? "file" : "files"}$sizeStr'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final episodesState = ref.watch(episodesNotifierProvider(widget.podcast?.id));
@@ -81,53 +156,117 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
 
     _checkAutoLoadMore(episodesState);
 
+    final activeFilter = _localFilter ?? episodesState.filter;
+    final displayedEpisodes = _filterEpisodes(episodesState.episodes, activeFilter, _searchQuery);
+    final allSelected = displayedEpisodes.isNotEmpty &&
+        displayedEpisodes.every((e) => e.id != null && _selectedEpisodeIds.contains(e.id));
+    final selectedDownloadedCount = displayedEpisodes
+        .where((e) => e.id != null && _selectedEpisodeIds.contains(e.id) && e.isDownloaded)
+        .length;
+
     return Scaffold(
-      appBar: AppBar(
-        leading: widget.onBackPressed != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Back',
-                onPressed: widget.onBackPressed,
-              )
-            : null,
-        title: Text(widget.podcast?.title ?? 'All Episodes'),
-        actions: [
-          IconButton(
-            icon: syncStatus.isSyncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: syncStatus.isSyncing
-                ? (syncStatus.currentTask ?? 'Refreshing...')
-                : 'Refresh Feed',
-            onPressed: syncStatus.isSyncing
-                ? null
-                : () {
-                    ref
-                        .read(episodesNotifierProvider(widget.podcast?.id).notifier)
-                        .refresh(podcast: widget.podcast);
+      appBar: _isSelectionMode
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Cancel selection',
+                onPressed: () {
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedEpisodeIds.clear();
+                  });
+                },
+              ),
+              title: Text('${_selectedEpisodeIds.length} selected'),
+              actions: [
+                IconButton(
+                  icon: Icon(allSelected ? Icons.deselect : Icons.select_all),
+                  tooltip: allSelected ? 'Deselect All' : 'Select All',
+                  onPressed: () {
+                    setState(() {
+                      if (allSelected) {
+                        _selectedEpisodeIds.clear();
+                      } else {
+                        _selectedEpisodeIds.addAll(
+                          displayedEpisodes.where((e) => e.id != null).map((e) => e.id!),
+                        );
+                      }
+                    });
                   },
-          ),
-          PopupMenuButton<EpisodeFilter>(
-            icon: const Icon(Icons.filter_list),
-            initialValue: _localFilter ?? episodesState.filter,
-            onSelected: (filter) {
-              setState(() => _localFilter = filter);
-              ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(filter);
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: EpisodeFilter.all, child: Text('All Episodes')),
-              PopupMenuItem(value: EpisodeFilter.unplayed, child: Text('Unplayed Only')),
-              PopupMenuItem(value: EpisodeFilter.inProgress, child: Text('In Progress Only')),
-              PopupMenuItem(value: EpisodeFilter.starred, child: Text('Starred Only')),
-              PopupMenuItem(value: EpisodeFilter.finished, child: Text('Finished Only')),
-            ],
-          ),
-        ],
-      ),
+                ),
+                IconButton(
+                  icon: Badge(
+                    isLabelVisible: selectedDownloadedCount > 0,
+                    label: Text('$selectedDownloadedCount'),
+                    child: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                  tooltip: selectedDownloadedCount > 0
+                      ? 'Delete $selectedDownloadedCount Downloads'
+                      : 'Delete Downloads',
+                  onPressed: _selectedEpisodeIds.isEmpty
+                      ? null
+                      : () => _confirmDeleteSelectedDownloads(displayedEpisodes),
+                ),
+              ],
+            )
+          : AppBar(
+              leading: widget.onBackPressed != null
+                  ? IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      tooltip: 'Back',
+                      onPressed: widget.onBackPressed,
+                    )
+                  : null,
+              title: Text(widget.podcast?.title ?? 'All Episodes'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.checklist_rounded),
+                  tooltip: 'Select episodes',
+                  onPressed: displayedEpisodes.isEmpty
+                      ? null
+                      : () {
+                          setState(() {
+                            _isSelectionMode = true;
+                            _selectedEpisodeIds.clear();
+                          });
+                        },
+                ),
+                IconButton(
+                  icon: syncStatus.isSyncing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        )
+                      : const Icon(Icons.refresh),
+                  tooltip: syncStatus.isSyncing
+                      ? (syncStatus.currentTask ?? 'Refreshing...')
+                      : 'Refresh Feed',
+                  onPressed: syncStatus.isSyncing
+                      ? null
+                      : () {
+                          ref
+                              .read(episodesNotifierProvider(widget.podcast?.id).notifier)
+                              .refresh(podcast: widget.podcast);
+                        },
+                ),
+                PopupMenuButton<EpisodeFilter>(
+                  icon: const Icon(Icons.filter_list),
+                  initialValue: _localFilter ?? episodesState.filter,
+                  onSelected: (filter) {
+                    setState(() => _localFilter = filter);
+                    ref.read(episodesNotifierProvider(widget.podcast?.id).notifier).setFilter(filter);
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: EpisodeFilter.all, child: Text('All Episodes')),
+                    PopupMenuItem(value: EpisodeFilter.unplayed, child: Text('Unplayed Only')),
+                    PopupMenuItem(value: EpisodeFilter.inProgress, child: Text('In Progress Only')),
+                    PopupMenuItem(value: EpisodeFilter.starred, child: Text('Starred Only')),
+                    PopupMenuItem(value: EpisodeFilter.finished, child: Text('Finished Only')),
+                  ],
+                ),
+              ],
+            ),
       body: Column(
         children: [
           if (syncStatus.isSyncing) ...[
@@ -178,7 +317,15 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                   .read(episodesNotifierProvider(widget.podcast?.id).notifier)
                   .loadMoreEpisodes(),
             ),
-          Expanded(child: _buildBody(context, episodesState, audioHandler)),
+          Expanded(
+            child: _buildBody(
+              context,
+              episodesState,
+              audioHandler,
+              activeFilter,
+              displayedEpisodes,
+            ),
+          ),
         ],
       ),
     );
@@ -311,7 +458,13 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
     );
   }
 
-  Widget _buildBody(BuildContext context, EpisodesState episodesState, dynamic audioHandler) {
+  Widget _buildBody(
+    BuildContext context,
+    EpisodesState episodesState,
+    dynamic audioHandler,
+    EpisodeFilter activeFilter,
+    List<Episode> displayedEpisodes,
+  ) {
     if (episodesState.isLoading && episodesState.episodes.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -343,9 +496,6 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
         ),
       );
     }
-
-    final activeFilter = _localFilter ?? episodesState.filter;
-    final displayedEpisodes = _filterEpisodes(episodesState.episodes, activeFilter, _searchQuery);
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -477,6 +627,26 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
                     return _EpisodeTile(
                       episode: ep,
                       audioHandler: audioHandler,
+                      isSelectionMode: _isSelectionMode,
+                      isSelected: ep.id != null && _selectedEpisodeIds.contains(ep.id),
+                      onSelectChanged: (val) {
+                        if (ep.id == null) return;
+                        setState(() {
+                          if (val == true) {
+                            _selectedEpisodeIds.add(ep.id!);
+                          } else {
+                            _selectedEpisodeIds.remove(ep.id!);
+                          }
+                        });
+                      },
+                      onLongPress: () {
+                        if (!_isSelectionMode) {
+                          setState(() {
+                            _isSelectionMode = true;
+                            if (ep.id != null) _selectedEpisodeIds.add(ep.id!);
+                          });
+                        }
+                      },
                       onTap: () => _showEpisodeDetailsModal(context, ep),
                       onPlay: () => audioHandler.playEpisode(ep),
                       onToggleStar: () => ref
@@ -782,6 +952,16 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
           }
         },
       );
+    } else if (ep.isPaused) {
+      return OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
+        icon: const Icon(Icons.play_circle_outline, color: Colors.blue),
+        label: const Text('Download Paused • Resume'),
+        onPressed: () {
+          Navigator.pop(modalCtx);
+          ref.read(episodeDownloadServiceProvider).resumeDownload(ep);
+        },
+      );
     } else if (ep.downloadStatus == DownloadStatus.failed) {
       return OutlinedButton.icon(
         style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
@@ -811,6 +991,10 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
 class _EpisodeTile extends StatelessWidget {
   final Episode episode;
   final dynamic audioHandler;
+  final bool isSelectionMode;
+  final bool isSelected;
+  final ValueChanged<bool?>? onSelectChanged;
+  final VoidCallback? onLongPress;
   final VoidCallback onTap;
   final VoidCallback onPlay;
   final VoidCallback onToggleStar;
@@ -821,6 +1005,10 @@ class _EpisodeTile extends StatelessWidget {
   const _EpisodeTile({
     required this.episode,
     required this.audioHandler,
+    this.isSelectionMode = false,
+    this.isSelected = false,
+    this.onSelectChanged,
+    this.onLongPress,
     required this.onTap,
     required this.onPlay,
     required this.onToggleStar,
@@ -888,10 +1076,16 @@ class _EpisodeTile extends StatelessWidget {
         tooltip: 'Downloading (${(episode.downloadProgress * 100).toInt()}%) • Tap to cancel',
         onPressed: onCancelDownload,
       );
+    } else if (episode.isPaused) {
+      return IconButton(
+        icon: const Icon(Icons.play_circle_outline, color: Colors.blue, size: 22),
+        tooltip: 'Download paused • Tap to resume',
+        onPressed: onDownload,
+      );
     } else if (episode.downloadStatus == DownloadStatus.failed) {
       return IconButton(
         icon: const Icon(Icons.refresh, color: Colors.orange, size: 22),
-        tooltip: 'Download failed • Tap to retry',
+        tooltip: 'Download failed (${episode.downloadError ?? "Tap to retry"})',
         onPressed: onDownload,
       );
     } else {
@@ -976,34 +1170,73 @@ class _EpisodeTile extends StatelessWidget {
         final showProgress = displayPosition > 0 && !isFinished;
 
         final tile = ListTile(
+          selected: isSelected,
+          selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.25),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          leading: Stack(
-            children: [
-              AppCachedImage(
-                imageUrl: episode.imageUrl,
-                width: 56,
-                height: 56,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              if (isFinished)
-                Positioned(
-                  right: 2,
-                  bottom: 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
-                      shape: BoxShape.circle,
+          leading: isSelectionMode
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: onSelectChanged,
                     ),
-                    child: Icon(
-                      Icons.check_circle,
-                      size: 14,
-                      color: Theme.of(context).colorScheme.primary,
+                    Stack(
+                      children: [
+                        AppCachedImage(
+                          imageUrl: episode.imageUrl,
+                          width: 44,
+                          height: 44,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        if (isFinished)
+                          Positioned(
+                            right: 2,
+                            bottom: 2,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.check_circle,
+                                size: 12,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
+                  ],
+                )
+              : Stack(
+                  children: [
+                    AppCachedImage(
+                      imageUrl: episode.imageUrl,
+                      width: 56,
+                      height: 56,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    if (isFinished)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
           title: Text(
             episode.title,
             maxLines: 2,
@@ -1074,132 +1307,135 @@ class _EpisodeTile extends StatelessWidget {
               ],
             ],
           ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDownloadButton(context),
-              IconButton(
-                icon: Icon(
-                  episode.isStarred ? Icons.star : Icons.star_border,
-                  color: episode.isStarred ? Colors.amber : null,
-                ),
-                tooltip: episode.isStarred ? 'Unstar episode' : 'Star episode',
-                onPressed: onToggleStar,
-              ),
-              IconButton(
-                icon: Icon(
-                  isCurrent
-                      ? Icons.volume_up
-                      : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
-                  size: 32,
-                  color: isCurrent
-                      ? Theme.of(context).colorScheme.primary
-                      : (isFinished
-                          ? Theme.of(context).colorScheme.outline
-                          : Theme.of(context).colorScheme.primary),
-                ),
-                tooltip: isCurrent
-                    ? 'Now playing'
-                    : (isFinished ? 'Replay episode' : 'Play episode'),
-                onPressed: onPlay,
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'More options',
-                onSelected: (value) {
-                  if (value == 'download') {
-                    onDownload?.call();
-                  } else if (value == 'cancel_download') {
-                    onCancelDownload?.call();
-                  } else if (value == 'delete_download') {
-                    onDeleteDownload?.call();
-                  } else if (value == 'star') {
-                    onToggleStar();
-                  } else if (value == 'play_next') {
-                    audioHandler?.addToQueue(episode, playNext: true);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Playing next: ${episode.title}')),
-                    );
-                  } else if (value == 'add_queue') {
-                    audioHandler?.addToQueue(episode, playNext: false);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Added to queue: ${episode.title}')),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (episode.isDownloaded)
-                    const PopupMenuItem(
-                      value: 'delete_download',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                          SizedBox(width: 12),
-                          Text('Delete Download', style: TextStyle(color: Colors.red)),
-                        ],
+          trailing: isSelectionMode
+              ? null
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildDownloadButton(context),
+                    IconButton(
+                      icon: Icon(
+                        episode.isStarred ? Icons.star : Icons.star_border,
+                        color: episode.isStarred ? Colors.amber : null,
                       ),
-                    )
-                  else if (episode.isDownloading)
-                    const PopupMenuItem(
-                      value: 'cancel_download',
-                      child: Row(
-                        children: [
-                          Icon(Icons.close, size: 20),
-                          SizedBox(width: 12),
-                          Text('Cancel Download'),
-                        ],
-                      ),
-                    )
-                  else
-                    const PopupMenuItem(
-                      value: 'download',
-                      child: Row(
-                        children: [
-                          Icon(Icons.download_outlined, size: 20),
-                          SizedBox(width: 12),
-                          Text('Download Episode'),
-                        ],
-                      ),
+                      tooltip: episode.isStarred ? 'Unstar episode' : 'Star episode',
+                      onPressed: onToggleStar,
                     ),
-                  PopupMenuItem(
-                    value: 'star',
-                    child: Row(
-                      children: [
-                        Icon(
-                          episode.isStarred ? Icons.star : Icons.star_border,
-                          size: 20,
-                          color: episode.isStarred ? Colors.amber : null,
+                    IconButton(
+                      icon: Icon(
+                        isCurrent
+                            ? Icons.volume_up
+                            : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
+                        size: 32,
+                        color: isCurrent
+                            ? Theme.of(context).colorScheme.primary
+                            : (isFinished
+                                ? Theme.of(context).colorScheme.outline
+                                : Theme.of(context).colorScheme.primary),
+                      ),
+                      tooltip: isCurrent
+                          ? 'Now playing'
+                          : (isFinished ? 'Replay episode' : 'Play episode'),
+                      onPressed: onPlay,
+                    ),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'More options',
+                      onSelected: (value) {
+                        if (value == 'download') {
+                          onDownload?.call();
+                        } else if (value == 'cancel_download') {
+                          onCancelDownload?.call();
+                        } else if (value == 'delete_download') {
+                          onDeleteDownload?.call();
+                        } else if (value == 'star') {
+                          onToggleStar();
+                        } else if (value == 'play_next') {
+                          audioHandler?.addToQueue(episode, playNext: true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Playing next: ${episode.title}')),
+                          );
+                        } else if (value == 'add_queue') {
+                          audioHandler?.addToQueue(episode, playNext: false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Added to queue: ${episode.title}')),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (episode.isDownloaded)
+                          const PopupMenuItem(
+                            value: 'delete_download',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                SizedBox(width: 12),
+                                Text('Delete Download', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          )
+                        else if (episode.isDownloading)
+                          const PopupMenuItem(
+                            value: 'cancel_download',
+                            child: Row(
+                              children: [
+                                Icon(Icons.close, size: 20),
+                                SizedBox(width: 12),
+                                Text('Cancel Download'),
+                              ],
+                            ),
+                          )
+                        else
+                          const PopupMenuItem(
+                            value: 'download',
+                            child: Row(
+                              children: [
+                                Icon(Icons.download_outlined, size: 20),
+                                SizedBox(width: 12),
+                                Text('Download Episode'),
+                              ],
+                            ),
+                          ),
+                        PopupMenuItem(
+                          value: 'star',
+                          child: Row(
+                            children: [
+                              Icon(
+                                episode.isStarred ? Icons.star : Icons.star_border,
+                                size: 20,
+                                color: episode.isStarred ? Colors.amber : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(episode.isStarred ? 'Unstar Episode' : 'Star Episode'),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(episode.isStarred ? 'Unstar Episode' : 'Star Episode'),
+                        const PopupMenuItem(
+                          value: 'play_next',
+                          child: Row(
+                            children: [
+                              Icon(Icons.playlist_play, size: 20),
+                              SizedBox(width: 12),
+                              Text('Play Next'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'add_queue',
+                          child: Row(
+                            children: [
+                              Icon(Icons.queue_music, size: 20),
+                              SizedBox(width: 12),
+                              Text('Add to Queue'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'play_next',
-                    child: Row(
-                      children: [
-                        Icon(Icons.playlist_play, size: 20),
-                        SizedBox(width: 12),
-                        Text('Play Next'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'add_queue',
-                    child: Row(
-                      children: [
-                        Icon(Icons.queue_music, size: 20),
-                        SizedBox(width: 12),
-                        Text('Add to Queue'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          onTap: onTap,
+                  ],
+                ),
+          onTap: isSelectionMode ? () => onSelectChanged?.call(!isSelected) : onTap,
+          onLongPress: onLongPress,
         );
 
         return AnimatedOpacity(

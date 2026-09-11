@@ -110,6 +110,11 @@ class DatabaseHelper {
           await db.execute('ALTER TABLE episodes ADD COLUMN totalBytes INTEGER NOT NULL DEFAULT 0;');
         } catch (_) {}
       }
+      if (!epCols.contains('downloadError')) {
+        try {
+          await db.execute('ALTER TABLE episodes ADD COLUMN downloadError TEXT;');
+        } catch (_) {}
+      }
 
       final podcastInfo = await db.rawQuery('PRAGMA table_info(podcasts)');
       final podCols = podcastInfo.map((row) => row['name'].toString()).toSet();
@@ -235,6 +240,7 @@ class DatabaseHelper {
         downloadProgress REAL NOT NULL DEFAULT 0.0,
         downloadedBytes INTEGER NOT NULL DEFAULT 0,
         totalBytes INTEGER NOT NULL DEFAULT 0,
+        downloadError TEXT,
         FOREIGN KEY (podcastId) REFERENCES podcasts (id) ON DELETE CASCADE,
         UNIQUE (podcastId, guid)
       )
@@ -442,6 +448,7 @@ class DatabaseHelper {
         final finalTotalBytes = episode.totalBytes > 0
             ? episode.totalBytes
             : existing.totalBytes;
+        final finalDownloadError = episode.downloadError ?? existing.downloadError;
 
         final adaptedMap = <String, dynamic>{
           _podcastIdCol: episode.podcastId,
@@ -460,6 +467,7 @@ class DatabaseHelper {
           'downloadProgress': finalDownloadProgress,
           'downloadedBytes': finalDownloadedBytes,
           'totalBytes': finalTotalBytes,
+          'downloadError': finalDownloadError,
         };
 
         batch.update(
@@ -488,6 +496,7 @@ class DatabaseHelper {
           'downloadProgress': episode.downloadProgress,
           'downloadedBytes': episode.downloadedBytes,
           'totalBytes': episode.totalBytes,
+          'downloadError': episode.downloadError,
         };
         batch.insert(
           'episodes',
@@ -595,6 +604,8 @@ class DatabaseHelper {
     double? progress,
     int? downloadedBytes,
     int? totalBytes,
+    String? error,
+    bool clearError = false,
   }) async {
     final db = await instance.database;
     await _detectColumnNames(db);
@@ -605,6 +616,11 @@ class DatabaseHelper {
       'downloadedBytes': ?downloadedBytes,
       'totalBytes': ?totalBytes,
     };
+    if (clearError) {
+      values['downloadError'] = null;
+    } else if (error != null) {
+      values['downloadError'] = error;
+    }
     return db.update(
       'episodes',
       values,
@@ -624,6 +640,7 @@ class DatabaseHelper {
         'downloadProgress': 0.0,
         'downloadedBytes': 0,
         'totalBytes': 0,
+        'downloadError': null,
       },
       where: 'id = ?',
       whereArgs: [episodeId],
@@ -642,6 +659,61 @@ class DatabaseHelper {
     ''';
     final maps = await db.rawQuery(query);
     return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<List<Episode>> getFailedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE LOWER(e.downloadStatus) = 'failed'
+      ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<List<Episode>> getPausedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE LOWER(e.downloadStatus) = 'paused'
+      ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<List<Episode>> getActiveOrQueuedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE LOWER(e.downloadStatus) IN ('downloading', 'queued')
+      ORDER BY e.$_pubDateCol DESC
+    ''';
+    final maps = await db.rawQuery(query);
+    return maps.map((map) => Episode.fromMap(map)).toList();
+  }
+
+  Future<int> reconcileInterruptedEpisodes() async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    return db.update(
+      'episodes',
+      {
+        'downloadStatus': DownloadStatus.paused.name,
+        'downloadError': 'Interrupted during previous session',
+      },
+      where: "LOWER(downloadStatus) IN ('downloading', 'queued')",
+    );
   }
 
   Future<int> getTotalDownloadSizeBytes() async {
@@ -669,6 +741,7 @@ class DatabaseHelper {
         'downloadProgress': 0.0,
         'downloadedBytes': 0,
         'totalBytes': 0,
+        'downloadError': null,
       },
       where: "downloadStatus = 'downloaded' OR downloadPath IS NOT NULL",
     );
@@ -761,6 +834,22 @@ class DatabaseHelper {
       WHERE e.guid = ?
     ''';
     final maps = await db.rawQuery(query, [guid]);
+    if (maps.isNotEmpty) {
+      return Episode.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<Episode?> getEpisodeById(int id) async {
+    final db = await instance.database;
+    await _detectColumnNames(db);
+    final query = '''
+      SELECT e.*, p.$_podcastRssUrlCol AS podcastRss
+      FROM episodes e
+      LEFT JOIN podcasts p ON e.$_podcastIdCol = p.id
+      WHERE e.id = ?
+    ''';
+    final maps = await db.rawQuery(query, [id]);
     if (maps.isNotEmpty) {
       return Episode.fromMap(maps.first);
     }

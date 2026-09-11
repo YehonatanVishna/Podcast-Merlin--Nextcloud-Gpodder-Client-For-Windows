@@ -48,7 +48,35 @@ class _AppCachedImageState extends State<AppCachedImage> {
 
   Future<void> _loadImage() async {
     final cleanUrl = widget.imageUrl.trim();
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+    if (cleanUrl.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _localFile = null;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    if (!kIsWeb && (cleanUrl.startsWith('file://') || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')))) {
+      try {
+        final filePath = cleanUrl.startsWith('file://')
+            ? Uri.parse(cleanUrl).toFilePath()
+            : cleanUrl;
+        final file = File(filePath);
+        if (await file.exists()) {
+          if (mounted) {
+            setState(() {
+              _localFile = file;
+              _isLoading = false;
+            });
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       if (mounted) {
         setState(() {
           _localFile = null;
@@ -109,7 +137,43 @@ class _AppCachedImageState extends State<AppCachedImage> {
         );
 
     final cleanUrl = widget.imageUrl.trim();
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+    if (cleanUrl.isEmpty) {
+      return widget.borderRadius != null
+          ? ClipRRect(borderRadius: widget.borderRadius!, child: fallback)
+          : fallback;
+    }
+
+    if (!kIsWeb && (cleanUrl.startsWith('file://') || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')))) {
+      try {
+        final filePath = cleanUrl.startsWith('file://')
+            ? Uri.parse(cleanUrl).toFilePath()
+            : cleanUrl;
+        final file = _localFile ?? File(filePath);
+        if (file.existsSync()) {
+          Widget content = Image.file(
+            file,
+            width: widget.width,
+            height: widget.height,
+            fit: widget.fit,
+            errorBuilder: (context, error, stackTrace) => fallback,
+          );
+          if (widget.borderRadius != null) {
+            content = ClipRRect(
+              borderRadius: widget.borderRadius!,
+              child: content,
+            );
+          }
+          return content;
+        }
+      } catch (_) {}
+      if (_localFile == null) {
+        return widget.borderRadius != null
+            ? ClipRRect(borderRadius: widget.borderRadius!, child: fallback)
+            : fallback;
+      }
+    }
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
       return widget.borderRadius != null
           ? ClipRRect(borderRadius: widget.borderRadius!, child: fallback)
           : fallback;

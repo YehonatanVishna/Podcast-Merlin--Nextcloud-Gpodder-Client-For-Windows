@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +13,7 @@ import 'package:podcast_merlin_flutter/features/downloads/episode_download_servi
 import 'package:podcast_merlin_flutter/features/player/audio_player_service.dart';
 import 'package:podcast_merlin_flutter/features/ui/views/episode_list_view.dart';
 import 'package:podcast_merlin_flutter/features/ui/views/settings_view.dart';
+import 'package:podcast_merlin_flutter/features/ui/views/download_center_view.dart';
 import 'package:podcast_merlin_flutter/features/sync/secure_storage_service.dart';
 
 void main() {
@@ -537,6 +539,86 @@ void main() {
       expect(clearedEp.isDownloaded, isFalse);
     });
 
+    test('deleteMultipleDownloads and deleteDownloadsByIds remove files and reset state', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: 'DL Multi Delete Test',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      final file1 = File('${downloadDir.path}/multi1.mp3');
+      await file1.writeAsBytes(List.filled(2000, 1));
+      final file2 = File('${downloadDir.path}/multi2.mp3');
+      await file2.writeAsBytes(List.filled(3000, 2));
+
+      final ep1 = Episode(
+        podcastId: podId,
+        guid: 'ep-multi-1',
+        title: 'Multi 1',
+        mediaUrl: '$serverUrl/multi1.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: '$serverUrl/feed.xml',
+        downloadStatus: DownloadStatus.downloaded,
+        downloadPath: file1.path,
+        downloadedBytes: 2000,
+      );
+      final ep2 = Episode(
+        podcastId: podId,
+        guid: 'ep-multi-2',
+        title: 'Multi 2',
+        mediaUrl: '$serverUrl/multi2.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: '$serverUrl/feed.xml',
+        downloadStatus: DownloadStatus.downloaded,
+        downloadPath: file2.path,
+        downloadedBytes: 3000,
+      );
+
+      await db.insertEpisodes([ep1, ep2]);
+      final savedEps = await db.getEpisodesForPodcast(podId);
+      expect(savedEps, hasLength(2));
+      expect(await file1.exists(), isTrue);
+      expect(await file2.exists(), isTrue);
+
+      // Test deleteMultipleDownloads
+      final deletedCount = await service.deleteMultipleDownloads(savedEps);
+      expect(deletedCount, 2);
+      expect(await file1.exists(), isFalse);
+      expect(await file2.exists(), isFalse);
+
+      final updatedEps = await db.getEpisodesForPodcast(podId);
+      for (final ep in updatedEps) {
+        expect(ep.downloadStatus, DownloadStatus.none);
+        expect(ep.downloadPath, isNull);
+        expect(ep.isDownloaded, isFalse);
+      }
+
+      // Re-create files and re-set downloaded status to test deleteDownloadsByIds
+      final file3 = File('${downloadDir.path}/multi3.mp3');
+      await file3.writeAsBytes(List.filled(1500, 3));
+      await db.updateEpisodeDownloadState(
+        updatedEps.first.id!,
+        status: DownloadStatus.downloaded,
+        downloadPath: file3.path,
+        downloadedBytes: 1500,
+      );
+      expect(await file3.exists(), isTrue);
+
+      final deletedByIdsCount = await service.deleteDownloadsByIds([updatedEps.first.id!]);
+      expect(deletedByIdsCount, 1);
+      expect(await file3.exists(), isFalse);
+      final epAfterIdDelete = await db.getEpisodeById(updatedEps.first.id!);
+      expect(epAfterIdDelete?.downloadStatus, DownloadStatus.none);
+      expect(epAfterIdDelete?.downloadPath, isNull);
+    });
+
     test('verifyDownloadedFiles cleans up DB state if file was deleted on disk', () async {
       final podId = await db.insertOrUpdatePodcast(
         Podcast(
@@ -761,6 +843,112 @@ void main() {
       expect(find.text('Download episodes to listen to them offline.'), findsOneWidget);
     });
 
+    testWidgets('EpisodeListView multiselect mass delete downloaded episodes', (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final pod = Podcast(
+        id: 1,
+        rssUrl: 'https://example.com/pod.xml',
+        title: 'Widget Test Podcast',
+        description: '',
+        imageUrl: '',
+        link: '',
+        lastUpdated: DateTime.now(),
+      );
+
+      final audioHandler = MockAudioHandler(db: db);
+      addTearDown(audioHandler.dispose);
+
+      final downloadService = EpisodeDownloadService(
+        db: db,
+        downloadDirResolver: () async => tempDir,
+      );
+      addTearDown(downloadService.dispose);
+
+      final testFile = File('${tempDir.path}/ep_list_multiselect.mp3');
+      testFile.writeAsBytesSync(List.filled(5000, 0));
+
+      final downloadedEp = Episode(
+        id: 10,
+        podcastId: 1,
+        guid: 'ep-list-multi-10',
+        title: 'Episode List Multi Ep',
+        mediaUrl: 'https://example.com/ep10.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: 'https://example.com/pod.xml',
+        downloadStatus: DownloadStatus.downloaded,
+        downloadPath: testFile.path,
+        downloadedBytes: 5000,
+      );
+
+      final fakeStorage = FakeSecureStorageService();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            secureStorageProvider.overrideWithValue(fakeStorage),
+            audioHandlerProvider.overrideWithValue(audioHandler),
+            episodeDownloadServiceProvider.overrideWithValue(downloadService),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(5000)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(1)),
+            downloadedEpisodesListProvider.overrideWith((ref) => Future.value([downloadedEp])),
+            episodesNotifierProvider(1).overrideWith(
+              (ref) => TestEpisodesNotifier([downloadedEp], filter: EpisodeFilter.all),
+            ),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: EpisodeListView(podcast: pod),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Normal AppBar shows checklist button
+      expect(find.byTooltip('Select episodes'), findsOneWidget);
+      await tester.tap(find.byTooltip('Select episodes'));
+      await tester.pump();
+
+      // Selection AppBar is active
+      expect(find.text('0 selected'), findsOneWidget);
+      expect(find.byTooltip('Cancel selection'), findsOneWidget);
+      expect(find.byTooltip('Select All'), findsOneWidget);
+
+      // Tap checkbox to select
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+
+      expect(find.text('1 selected'), findsOneWidget);
+
+      // Tap Delete downloads button
+      expect(find.byTooltip('Delete 1 Downloads'), findsOneWidget);
+      await tester.tap(find.byTooltip('Delete 1 Downloads'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Confirmation dialog is shown
+      expect(find.text('Delete 1 Downloads?'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Delete (1)'), findsOneWidget);
+
+      // Confirm delete
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete (1)'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      // File removed from disk
+      expect(testFile.existsSync(), isFalse);
+    });
+
     testWidgets('SettingsView displays Downloads & Storage card and triggers Clear All', (tester) async {
       tester.view.physicalSize = const Size(1280, 1600);
       tester.view.devicePixelRatio = 1.0;
@@ -853,6 +1041,585 @@ void main() {
 
       // Verify file is deleted
       expect(testAudioFile.existsSync(), isFalse);
+    });
+  });
+
+  group('Robust Download Center Engine & Session Resilience', () {
+    late HttpServer mockServer;
+    late String serverUrl;
+    late Directory downloadDir;
+    late EpisodeDownloadService service;
+    int requestCount = 0;
+
+    setUp(() async {
+      requestCount = 0;
+      mockServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      serverUrl = 'http://${mockServer.address.address}:${mockServer.port}';
+
+      mockServer.listen((request) async {
+        requestCount++;
+        final path = request.uri.path;
+
+        if (path == '/resumable.mp3') {
+          final fullBytes = utf8.encode('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+          final rangeHeader = request.headers.value('range');
+
+          if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
+            final startStr = rangeHeader.substring(6).split('-').first;
+            final start = int.tryParse(startStr) ?? 0;
+            final partialBytes = fullBytes.sublist(start);
+
+            request.response.statusCode = HttpStatus.partialContent; // 206
+            request.response.headers.contentType = ContentType('audio', 'mpeg');
+            request.response.headers.set(
+              'content-range',
+              'bytes $start-${fullBytes.length - 1}/${fullBytes.length}',
+            );
+            request.response.headers.contentLength = partialBytes.length;
+            request.response.add(partialBytes);
+            await request.response.close();
+          } else {
+            request.response.statusCode = HttpStatus.ok;
+            request.response.headers.contentType = ContentType('audio', 'mpeg');
+            request.response.headers.contentLength = fullBytes.length;
+            request.response.add(fullBytes);
+            await request.response.close();
+          }
+        } else if (path == '/flaky.mp3') {
+          if (requestCount == 1) {
+            request.response.statusCode = HttpStatus.serviceUnavailable;
+            await request.response.close();
+          } else {
+            final dummyBytes = utf8.encode('FLAKY_RECOVERED_CONTENT');
+            request.response.statusCode = HttpStatus.ok;
+            request.response.headers.contentType = ContentType('audio', 'mpeg');
+            request.response.headers.contentLength = dummyBytes.length;
+            request.response.add(dummyBytes);
+            await request.response.close();
+          }
+        } else if (path == '/not_found.mp3') {
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        } else if (path == '/pause_test.mp3') {
+          try {
+            request.response.statusCode = HttpStatus.ok;
+            request.response.headers.contentLength = 1000;
+            for (int i = 0; i < 50; i++) {
+              request.response.add(utf8.encode('chunk_${i.toString().padLeft(3, '0')}_1234567890'));
+              await Future.delayed(const Duration(milliseconds: 40));
+            }
+            await request.response.close();
+          } catch (_) {}
+        } else {
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+        }
+      });
+
+      downloadDir = Directory('${tempDir.path}/robust_dl_${DateTime.now().millisecondsSinceEpoch}');
+      await downloadDir.create(recursive: true);
+
+      service = EpisodeDownloadService(
+        db: db,
+        downloadDirResolver: () async => downloadDir,
+      );
+    });
+
+    tearDown(() async {
+      service.dispose();
+      await mockServer.close(force: true);
+    });
+
+    test('HTTP Range Resumable Download completes from partial .part file', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: 'Range Test Pod',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      final ep = Episode(
+        podcastId: podId,
+        guid: 'ep-range-1',
+        title: 'Resumable Ep',
+        mediaUrl: '$serverUrl/resumable.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: '$serverUrl/feed.xml',
+      );
+      await db.insertEpisodes([ep]);
+      final savedEp = (await db.getEpisodesForPodcast(podId)).first;
+
+      final fileName = 'ep_${savedEp.id!}_${md5.convert(savedEp.mediaUrl.codeUnits).toString()}.mp3';
+      final partFile = File('${downloadDir.path}/$fileName.part');
+      await partFile.writeAsBytes(utf8.encode('0123456789'));
+
+      await service.startDownload(savedEp);
+
+      while (service.isEpisodeActive(savedEp.id!)) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      final completedEp = (await db.getEpisodesForPodcast(podId)).first;
+      expect(completedEp.isDownloaded, isTrue);
+      final finalFile = File(completedEp.downloadPath!);
+      expect(await finalFile.exists(), isTrue);
+      final finalContent = await finalFile.readAsString();
+      expect(finalContent, '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    });
+
+    test('Automatic retry recovers transient 503 error and succeeds', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: 'Retry Test Pod',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      final ep = Episode(
+        podcastId: podId,
+        guid: 'ep-flaky-1',
+        title: 'Flaky Retry Ep',
+        mediaUrl: '$serverUrl/flaky.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: '$serverUrl/feed.xml',
+      );
+      await db.insertEpisodes([ep]);
+      final savedEp = (await db.getEpisodesForPodcast(podId)).first;
+
+      await service.startDownload(savedEp);
+
+      while (service.isEpisodeActive(savedEp.id!)) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      final completedEp = (await db.getEpisodesForPodcast(podId)).first;
+      expect(completedEp.isDownloaded, isTrue);
+      expect(requestCount, greaterThan(1));
+    });
+
+    test('Permanent 404 sets failed status and records downloadError without retrying', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: '404 Pod',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      final ep = Episode(
+        podcastId: podId,
+        guid: 'ep-404-1',
+        title: '404 Ep',
+        mediaUrl: '$serverUrl/not_found.mp3',
+        description: '',
+        imageUrl: '',
+        podcastRss: '$serverUrl/feed.xml',
+      );
+      await db.insertEpisodes([ep]);
+      final savedEp = (await db.getEpisodesForPodcast(podId)).first;
+
+      await service.startDownload(savedEp);
+
+      while (service.isEpisodeActive(savedEp.id!)) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      final failedEp = (await db.getEpisodesForPodcast(podId)).first;
+      expect(failedEp.downloadStatus, DownloadStatus.failed);
+      expect(failedEp.isFailed, isTrue);
+      expect(failedEp.downloadError, isNotNull);
+      expect(failedEp.downloadError, contains('404'));
+      expect(requestCount, 1);
+    });
+
+    test('reconcileOnStartup safely transitions stuck downloading rows to paused', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: 'Crash Pod',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      await db.insertEpisodes([
+        Episode(
+          podcastId: podId,
+          guid: 'ep-stuck-1',
+          title: 'Stuck Downloading Ep',
+          mediaUrl: 'https://example.com/stuck.mp3',
+          description: '',
+          imageUrl: '',
+          podcastRss: '$serverUrl/feed.xml',
+          downloadStatus: DownloadStatus.downloading,
+          downloadProgress: 0.5,
+        ),
+      ]);
+
+      await service.reconcileOnStartup();
+
+      final reconciled = (await db.getEpisodesForPodcast(podId)).first;
+      expect(reconciled.downloadStatus, DownloadStatus.paused);
+      expect(reconciled.isPaused, isTrue);
+      expect(reconciled.downloadError, contains('Interrupted'));
+    });
+
+    test('pauseAll and resumeAll toggle multiple downloads', () async {
+      final podId = await db.insertOrUpdatePodcast(
+        Podcast(
+          rssUrl: '$serverUrl/feed.xml',
+          title: 'Bulk Pod',
+          description: '',
+          imageUrl: '',
+          link: '',
+          lastUpdated: DateTime.now(),
+        ),
+      );
+
+      await db.insertEpisodes([
+        Episode(
+          podcastId: podId,
+          guid: 'ep-bulk-1',
+          title: 'Bulk 1',
+          mediaUrl: '$serverUrl/pause_test.mp3',
+          description: '',
+          imageUrl: '',
+          podcastRss: '',
+        ),
+      ]);
+      final savedEp = (await db.getEpisodesForPodcast(podId)).first;
+
+      await service.startDownload(savedEp);
+      await Future.delayed(const Duration(milliseconds: 60));
+
+      await service.pauseAll();
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      expect(service.isEpisodeActive(savedEp.id!), isFalse);
+      final pausedEp = (await db.getEpisodesForPodcast(podId)).first;
+      expect(pausedEp.downloadStatus, DownloadStatus.paused);
+
+      await service.resumeAll();
+      expect(service.isEpisodeActive(savedEp.id!) || service.isEpisodeQueued(savedEp.id!), isTrue);
+      await service.pauseAll();
+    });
+  });
+
+  group('DownloadCenterView UI & Widget Tests', () {
+    testWidgets('DownloadCenterView renders 3 tabs and storage summary', (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final audioHandler = MockAudioHandler(db: db);
+      addTearDown(audioHandler.dispose);
+
+      final downloadService = EpisodeDownloadService(
+        db: db,
+        downloadDirResolver: () async => tempDir,
+      );
+      addTearDown(downloadService.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            audioHandlerProvider.overrideWithValue(audioHandler),
+            episodeDownloadServiceProvider.overrideWithValue(downloadService),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(52428800)), // 50 MB
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(2)),
+            downloadedEpisodesListProvider.overrideWith((ref) => Future.value([
+                  const Episode(
+                    id: 1,
+                    guid: 'dl-view-1',
+                    title: 'Downloaded Center Ep 1',
+                    mediaUrl: 'https://example.com/1.mp3',
+                    description: 'Description 1',
+                    imageUrl: '',
+                    podcastRss: '',
+                    downloadStatus: DownloadStatus.downloaded,
+                    downloadPath: '/tmp/1.mp3',
+                    downloadedBytes: 26214400,
+                  ),
+                ])),
+            failedEpisodesListProvider.overrideWith((ref) => Future.value([
+                  const Episode(
+                    id: 2,
+                    guid: 'dl-view-2',
+                    title: 'Failed Center Ep 2',
+                    mediaUrl: 'https://example.com/2.mp3',
+                    description: 'Description 2',
+                    imageUrl: '',
+                    podcastRss: '',
+                    downloadStatus: DownloadStatus.failed,
+                    downloadError: 'Connection timed out',
+                  ),
+                ])),
+          ],
+          child: const MaterialApp(
+            home: DownloadCenterView(),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Download Center'), findsOneWidget);
+      expect(find.text('Queue & Active'), findsOneWidget);
+      expect(find.text('Downloaded'), findsOneWidget);
+      expect(find.text('Failed'), findsOneWidget);
+
+      expect(find.textContaining('50.0 MB offline storage'), findsOneWidget);
+
+      await tester.tap(find.text('Downloaded'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Downloaded Center Ep 1'), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+
+      await tester.tap(find.text('Failed'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Failed Center Ep 2'), findsOneWidget);
+      expect(find.text('Connection timed out'), findsOneWidget);
+      expect(find.byIcon(Icons.replay), findsWidgets);
+    });
+
+    testWidgets('DownloadCenterView multiselect delete in downloaded tab', (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final audioHandler = MockAudioHandler(db: db);
+      addTearDown(audioHandler.dispose);
+
+      final testFile = File('${tempDir.path}/multiselect_test.mp3');
+      testFile.writeAsBytesSync(List.filled(10000, 0));
+
+      int testPodId = 0;
+      late Episode savedEp;
+      await tester.runAsync(() async {
+        testPodId = await db.insertOrUpdatePodcast(
+          Podcast(
+            rssUrl: 'https://example.com/feed.xml',
+            title: 'DL Center Multi Pod',
+            description: '',
+            imageUrl: '',
+            link: '',
+            lastUpdated: DateTime.now(),
+          ),
+        );
+
+        final ep1 = Episode(
+          podcastId: testPodId,
+          guid: 'dl-view-multi-1',
+          title: 'Downloaded Center Ep 1',
+          mediaUrl: 'https://example.com/1.mp3',
+          description: 'Description 1',
+          imageUrl: '',
+          podcastRss: 'https://example.com/feed.xml',
+          downloadStatus: DownloadStatus.downloaded,
+          downloadPath: testFile.path,
+          downloadedBytes: 10000,
+        );
+        await db.insertEpisodes([ep1]);
+        savedEp = (await db.getEpisodesForPodcast(testPodId)).first;
+      });
+
+      final downloadService = EpisodeDownloadService(
+        db: db,
+        downloadDirResolver: () async => tempDir,
+      );
+      addTearDown(downloadService.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            audioHandlerProvider.overrideWithValue(audioHandler),
+            episodeDownloadServiceProvider.overrideWithValue(downloadService),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(10000)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(1)),
+            downloadedEpisodesListProvider.overrideWith((ref) => Future.value([savedEp])),
+            failedEpisodesListProvider.overrideWith((ref) => Future.value([])),
+          ],
+          child: const MaterialApp(
+            home: DownloadCenterView(),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Switch to Downloaded tab
+      await tester.tap(find.text('Downloaded'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Downloaded Center Ep 1'), findsOneWidget);
+
+      // Tap checklist icon to enter multiselect mode
+      await tester.tap(find.byTooltip('Select episodes to manage'));
+      await tester.pump();
+
+      // In selection mode, select all / tristate checkbox appears
+      expect(find.text('0 of 1 selected'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Delete'), findsOneWidget);
+
+      // Tap the episode checkbox
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pump();
+
+      expect(find.textContaining('1 of 1 selected'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Delete (1)'), findsOneWidget);
+
+      // Tap Delete (1) button
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete (1)'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Confirmation dialog should appear
+      expect(find.text('Delete 1 Downloads?'), findsOneWidget);
+      expect(find.textContaining('This will permanently delete 1 downloaded audio file'), findsOneWidget);
+
+      // Confirm deletion
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(FilledButton, 'Delete (1)'),
+        ),
+      );
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      // Verify file removed from disk
+      expect(testFile.existsSync(), isFalse);
+      Episode? refreshedEp;
+      await tester.runAsync(() async {
+        refreshedEp = await db.getEpisodeById(savedEp.id!);
+      });
+      expect(refreshedEp?.downloadStatus, DownloadStatus.none);
+    });
+
+    testWidgets('DownloadCenterView multiselect dismiss in failed tab', (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final audioHandler = MockAudioHandler(db: db);
+      addTearDown(audioHandler.dispose);
+
+      int testPodId = 0;
+      late Episode savedFailedEp;
+      await tester.runAsync(() async {
+        testPodId = await db.insertOrUpdatePodcast(
+          Podcast(
+            rssUrl: 'https://example.com/feed.xml',
+            title: 'DL Center Failed Pod',
+            description: '',
+            imageUrl: '',
+            link: '',
+            lastUpdated: DateTime.now(),
+          ),
+        );
+
+        final failedEp = Episode(
+          podcastId: testPodId,
+          guid: 'failed-multi-1',
+          title: 'Failed Multi Ep 1',
+          mediaUrl: 'https://example.com/failed.mp3',
+          description: 'Failed Description',
+          imageUrl: '',
+          podcastRss: 'https://example.com/feed.xml',
+          downloadStatus: DownloadStatus.failed,
+          downloadError: '404 Not Found',
+        );
+        await db.insertEpisodes([failedEp]);
+        savedFailedEp = (await db.getEpisodesForPodcast(testPodId)).first;
+      });
+
+      final downloadService = EpisodeDownloadService(
+        db: db,
+        downloadDirResolver: () async => tempDir,
+      );
+      addTearDown(downloadService.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(db),
+            audioHandlerProvider.overrideWithValue(audioHandler),
+            episodeDownloadServiceProvider.overrideWithValue(downloadService),
+            downloadStorageUsageBytesProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesCountProvider.overrideWith((ref) => Future.value(0)),
+            downloadedEpisodesListProvider.overrideWith((ref) => Future.value([])),
+            failedEpisodesListProvider.overrideWith((ref) => Future.value([savedFailedEp])),
+          ],
+          child: const MaterialApp(
+            home: DownloadCenterView(),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Switch to Failed tab
+      await tester.tap(find.text('Failed'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Failed Multi Ep 1'), findsOneWidget);
+
+      // Enter selection mode in Failed tab
+      await tester.tap(find.byTooltip('Select failed downloads'));
+      await tester.pump();
+
+      // Check item
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pump();
+
+      expect(find.text('Retry (1)'), findsOneWidget);
+      expect(find.text('Dismiss (1)'), findsOneWidget);
+
+      // Tap Dismiss (1)
+      await tester.tap(find.text('Dismiss (1)'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      // Verify DB status cleared from failed to none
+      Episode? clearedFailedEp;
+      await tester.runAsync(() async {
+        clearedFailedEp = await db.getEpisodeById(savedFailedEp.id!);
+      });
+      expect(clearedFailedEp?.downloadStatus, DownloadStatus.none);
+      expect(clearedFailedEp?.downloadError, isNull);
     });
   });
 }

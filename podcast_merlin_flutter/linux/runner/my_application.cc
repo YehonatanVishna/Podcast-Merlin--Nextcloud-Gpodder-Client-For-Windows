@@ -19,20 +19,198 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+static void copy_file_if_exists(const gchar* src, const gchar* dest) {
+  if (g_file_test(src, G_FILE_TEST_EXISTS)) {
+    g_autoptr(GFile) src_file = g_file_new_for_path(src);
+    g_autoptr(GFile) dest_file = g_file_new_for_path(dest);
+    g_file_copy(src_file, dest_file, G_FILE_COPY_OVERWRITE, nullptr, nullptr, nullptr, nullptr);
+  }
+}
+
+// Ensures .desktop file and icons exist in ~/.local/share for Wayland compositors (KDE Plasma, GNOME Shell)
+static void ensure_linux_desktop_integration() {
+  gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path == nullptr) return;
+
+  const gchar* data_home = g_get_user_data_dir();
+  if (data_home == nullptr) {
+    g_free(exe_path);
+    return;
+  }
+
+  g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path);
+  g_autoptr(GFile) exe_dir = g_file_get_parent(exe_file);
+  gchar* exe_dir_path = g_file_get_path(exe_dir);
+
+  gchar* logo_png = nullptr;
+  gchar* logo_svg = nullptr;
+
+  gchar* candidate_png = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", "logo.png", nullptr);
+  gchar* candidate_svg = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", "logo.svg", nullptr);
+
+  if (g_file_test(candidate_png, G_FILE_TEST_EXISTS)) {
+    logo_png = candidate_png;
+  } else if (g_file_test("assets/images/logo.png", G_FILE_TEST_EXISTS)) {
+    g_free(candidate_png);
+    logo_png = g_strdup("assets/images/logo.png");
+  } else {
+    g_free(candidate_png);
+  }
+
+  if (g_file_test(candidate_svg, G_FILE_TEST_EXISTS)) {
+    logo_svg = candidate_svg;
+  } else if (g_file_test("assets/images/logo.svg", G_FILE_TEST_EXISTS)) {
+    g_free(candidate_svg);
+    logo_svg = g_strdup("assets/images/logo.svg");
+  } else {
+    g_free(candidate_svg);
+  }
+
+  gchar* apps_dir = g_build_filename(data_home, "applications", nullptr);
+  gchar* pixmaps_dir = g_build_filename(data_home, "pixmaps", nullptr);
+  gchar* icons_hicolor_scalable = g_build_filename(data_home, "icons", "hicolor", "scalable", "apps", nullptr);
+  gchar* icons_hicolor_256 = g_build_filename(data_home, "icons", "hicolor", "256x256", "apps", nullptr);
+  gchar* icons_hicolor_root = g_build_filename(data_home, "icons", "hicolor", nullptr);
+
+  g_mkdir_with_parents(apps_dir, 0755);
+  g_mkdir_with_parents(pixmaps_dir, 0755);
+  g_mkdir_with_parents(icons_hicolor_scalable, 0755);
+  g_mkdir_with_parents(icons_hicolor_256, 0755);
+
+  gchar* local_index_theme = g_build_filename(icons_hicolor_root, "index.theme", nullptr);
+  if (!g_file_test(local_index_theme, G_FILE_TEST_EXISTS)) {
+    if (g_file_test("/usr/share/icons/hicolor/index.theme", G_FILE_TEST_EXISTS)) {
+      copy_file_if_exists("/usr/share/icons/hicolor/index.theme", local_index_theme);
+    }
+  }
+  g_free(local_index_theme);
+
+  if (logo_png != nullptr) {
+    gchar* dest_png1 = g_build_filename(icons_hicolor_256, "com.podcastmerlin.podcast_merlin_flutter.png", nullptr);
+    gchar* dest_png2 = g_build_filename(icons_hicolor_256, "podcast_merlin_flutter.png", nullptr);
+    gchar* dest_pixmap1 = g_build_filename(pixmaps_dir, "com.podcastmerlin.podcast_merlin_flutter.png", nullptr);
+    gchar* dest_pixmap2 = g_build_filename(pixmaps_dir, "podcast_merlin_flutter.png", nullptr);
+
+    copy_file_if_exists(logo_png, dest_png1);
+    copy_file_if_exists(logo_png, dest_png2);
+    copy_file_if_exists(logo_png, dest_pixmap1);
+    copy_file_if_exists(logo_png, dest_pixmap2);
+
+    g_free(dest_png1);
+    g_free(dest_png2);
+    g_free(dest_pixmap1);
+    g_free(dest_pixmap2);
+    g_free(logo_png);
+  }
+
+  if (logo_svg != nullptr) {
+    gchar* dest_svg1 = g_build_filename(icons_hicolor_scalable, "com.podcastmerlin.podcast_merlin_flutter.svg", nullptr);
+    gchar* dest_svg2 = g_build_filename(icons_hicolor_scalable, "podcast_merlin_flutter.svg", nullptr);
+    gchar* dest_pixmap1 = g_build_filename(pixmaps_dir, "com.podcastmerlin.podcast_merlin_flutter.svg", nullptr);
+    gchar* dest_pixmap2 = g_build_filename(pixmaps_dir, "podcast_merlin_flutter.svg", nullptr);
+
+    copy_file_if_exists(logo_svg, dest_svg1);
+    copy_file_if_exists(logo_svg, dest_svg2);
+    copy_file_if_exists(logo_svg, dest_pixmap1);
+    copy_file_if_exists(logo_svg, dest_pixmap2);
+
+    g_free(dest_svg1);
+    g_free(dest_svg2);
+    g_free(dest_pixmap1);
+    g_free(dest_pixmap2);
+    g_free(logo_svg);
+  }
+
+  gchar* desktop_path1 = g_build_filename(apps_dir, "com.podcastmerlin.podcast_merlin_flutter.desktop", nullptr);
+  gchar* desktop_path2 = g_build_filename(apps_dir, "podcast_merlin_flutter.desktop", nullptr);
+
+  gchar* desktop_content = g_strdup_printf(
+      "[Desktop Entry]\n"
+      "Version=1.0\n"
+      "Type=Application\n"
+      "Name=Podcast Merlin\n"
+      "GenericName=Podcast Client\n"
+      "Comment=Nextcloud & gPodder Podcast Client\n"
+      "Exec=%s %%U\n"
+      "Icon=com.podcastmerlin.podcast_merlin_flutter\n"
+      "Terminal=false\n"
+      "Categories=AudioVideo;Audio;Player;\n"
+      "StartupWMClass=%s\n",
+      exe_path, APPLICATION_ID);
+
+  g_file_set_contents(desktop_path1, desktop_content, -1, nullptr);
+
+  gchar* desktop_content2 = g_strdup_printf(
+      "[Desktop Entry]\n"
+      "Version=1.0\n"
+      "Type=Application\n"
+      "Name=Podcast Merlin\n"
+      "GenericName=Podcast Client\n"
+      "Comment=Nextcloud & gPodder Podcast Client\n"
+      "Exec=%s %%U\n"
+      "Icon=podcast_merlin_flutter\n"
+      "Terminal=false\n"
+      "Categories=AudioVideo;Audio;Player;\n"
+      "StartupWMClass=podcast_merlin_flutter\n",
+      exe_path);
+
+  g_file_set_contents(desktop_path2, desktop_content2, -1, nullptr);
+
+  g_spawn_command_line_async(
+      "sh -c 'update-desktop-database ~/.local/share/applications 2>/dev/null; "
+      "kbuildsycoca6 --noincremental 2>/dev/null; "
+      "gtk-update-icon-cache -f ~/.local/share/icons/hicolor 2>/dev/null'",
+      nullptr);
+
+  g_free(desktop_content);
+  g_free(desktop_content2);
+  g_free(desktop_path1);
+  g_free(desktop_path2);
+  g_free(apps_dir);
+  g_free(pixmaps_dir);
+  g_free(icons_hicolor_scalable);
+  g_free(icons_hicolor_256);
+  g_free(icons_hicolor_root);
+  g_free(exe_dir_path);
+  g_free(exe_path);
+}
+
 // Helper to set window icon using multiple standard sizes for Linux desktop environments
 static void set_window_icon(GtkWindow* window) {
+  // Ensure Wayland and desktop environment have registered icons and .desktop entries
+  ensure_linux_desktop_integration();
+
+  // Set default and window icon names for Wayland / XDG shell integration
+  gtk_window_set_default_icon_name(APPLICATION_ID);
+  gtk_window_set_icon_name(window, APPLICATION_ID);
+
+  // Append local assets directory to GtkIconTheme search path
+  gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path != nullptr) {
+    g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path);
+    g_autoptr(GFile) exe_dir = g_file_get_parent(exe_file);
+    gchar* exe_dir_path = g_file_get_path(exe_dir);
+    gchar* assets_images_dir = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", nullptr);
+    if (g_file_test(assets_images_dir, G_FILE_TEST_IS_DIR)) {
+      gtk_icon_theme_append_search_path(gtk_icon_theme_get_default(), assets_images_dir);
+    }
+    g_free(assets_images_dir);
+    g_free(exe_dir_path);
+    g_free(exe_path);
+  }
+
   gchar* icon_path = nullptr;
 
   if (g_file_test("assets/images/logo.png", G_FILE_TEST_EXISTS)) {
     icon_path = g_strdup("assets/images/logo.png");
   } else {
-    gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
-    if (exe_path != nullptr) {
-      g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path);
+    gchar* exe_path2 = g_file_read_link("/proc/self/exe", nullptr);
+    if (exe_path2 != nullptr) {
+      g_autoptr(GFile) exe_file = g_file_new_for_path(exe_path2);
       g_autoptr(GFile) exe_dir = g_file_get_parent(exe_file);
       gchar* exe_dir_path = g_file_get_path(exe_dir);
       icon_path = g_build_filename(exe_dir_path, "data", "flutter_assets", "assets", "images", "logo.png", nullptr);
-      g_free(exe_path);
+      g_free(exe_path2);
       g_free(exe_dir_path);
     }
   }
@@ -147,9 +325,8 @@ static gboolean my_application_local_command_line(GApplication* application,
 
 // Implements GApplication::startup.
 static void my_application_startup(GApplication* application) {
-  // MyApplication* self = MY_APPLICATION(object);
-
-  // Perform any actions required at application startup.
+  g_set_prgname(APPLICATION_ID);
+  g_set_application_name("Podcast Merlin");
 
   G_APPLICATION_CLASS(my_application_parent_class)->startup(application);
 }
