@@ -680,14 +680,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
-  mpris:
-    dependency: "direct main"
-    description:
-      name: mpris
-      sha256: "9f90e970f6b97ef872de3e77b2a9ccf649bc52f8040f3b535b3a8fc770058adf"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.0"
   msix:
     dependency: "direct dev"
     description:
