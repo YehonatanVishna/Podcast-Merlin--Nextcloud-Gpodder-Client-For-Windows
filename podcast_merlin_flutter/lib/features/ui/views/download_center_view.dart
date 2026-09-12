@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/responsive.dart';
 import '../../downloads/episode_download_service.dart';
 import '../widgets/cached_image.dart';
 
@@ -127,6 +128,7 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isCompact = context.isCompact;
     final downloadService = ref.watch(episodeDownloadServiceProvider);
     final activeCountAsync = ref.watch(activeDownloadsCountProvider);
     final storageAsync = ref.watch(downloadStorageUsageBytesProvider);
@@ -151,10 +153,16 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
     return Scaffold(
       appBar: AppBar(
         title: const Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.download_rounded, size: 26),
-            SizedBox(width: 10),
-            Text('Download Center'),
+            Icon(Icons.download_rounded, size: 24),
+            SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Download Center',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
@@ -228,6 +236,8 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
           preferredSize: const Size.fromHeight(48),
           child: TabBar(
             controller: _tabController,
+            isScrollable: isCompact,
+            tabAlignment: isCompact ? TabAlignment.start : TabAlignment.fill,
             tabs: [
               Tab(
                 child: Row(
@@ -318,10 +328,13 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
           Expanded(
             child: Text(
               '${_formatBytes(storageBytes)} offline storage • $downloadedCount ${downloadedCount == 1 ? 'episode' : 'episodes'}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
-          if (activeCount > 0)
+          if (activeCount > 0) ...[
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -347,12 +360,13 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
                       color: theme.colorScheme.onPrimaryContainer,
                     ),
                   ),
-                ],
+                  ],
+                ),
               ),
-            ),
-        ],
-      ),
-    );
+            ],
+          ],
+        ),
+      );
   }
 
   Widget _buildQueueTab(
@@ -400,45 +414,74 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Active Downloads (${activeEntries.length})',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ),
-              if (hasDownloading)
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 480;
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Active Downloads (${activeEntries.length})',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  icon: const Icon(Icons.pause, size: 16),
-                  label: const Text('Pause All'),
-                  onPressed: () => service.pauseAll(),
-                )
-              else if (hasPaused)
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                  ),
-                  icon: const Icon(Icons.play_arrow, size: 16),
-                  label: const Text('Resume All'),
-                  onPressed: () => service.resumeAll(),
-                ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                ),
-                icon: const Icon(Icons.close, size: 16),
-                label: const Text('Cancel All'),
-                onPressed: () => _confirmCancelAllActive(context, service),
-              ),
-            ],
+                  if (hasDownloading)
+                    isNarrow
+                        ? IconButton.filledTonal(
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.pause, size: 18),
+                            tooltip: 'Pause All',
+                            onPressed: () => service.pauseAll(),
+                          )
+                        : FilledButton.tonalIcon(
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            ),
+                            icon: const Icon(Icons.pause, size: 16),
+                            label: const Text('Pause All'),
+                            onPressed: () => service.pauseAll(),
+                          )
+                  else if (hasPaused)
+                    isNarrow
+                        ? IconButton.filledTonal(
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.play_arrow, size: 18),
+                            tooltip: 'Resume All',
+                            onPressed: () => service.resumeAll(),
+                          )
+                        : FilledButton.tonalIcon(
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            ),
+                            icon: const Icon(Icons.play_arrow, size: 16),
+                            label: const Text('Resume All'),
+                            onPressed: () => service.resumeAll(),
+                          ),
+                  const SizedBox(width: 8),
+                  isNarrow
+                      ? IconButton.outlined(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close, size: 18),
+                          tooltip: 'Cancel All',
+                          onPressed: () => _confirmCancelAllActive(context, service),
+                        )
+                      : OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                          ),
+                          icon: const Icon(Icons.close, size: 16),
+                          label: const Text('Cancel All'),
+                          onPressed: () => _confirmCancelAllActive(context, service),
+                        ),
+                ],
+              );
+            },
           ),
         ),
         const Divider(height: 1),
@@ -869,20 +912,19 @@ class _DownloadCenterViewState extends ConsumerState<DownloadCenterView>
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      subtitle: Row(
+                      subtitle: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
-                          if (dateStr.isNotEmpty) ...[
+                          if (dateStr.isNotEmpty)
                             Text(dateStr, style: theme.textTheme.bodySmall),
-                            const SizedBox(width: 6),
+                          if (dateStr.isNotEmpty && (durationStr.isNotEmpty || ep.downloadedBytes > 0))
                             const Text('•', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                            const SizedBox(width: 6),
-                          ],
-                          if (durationStr.isNotEmpty) ...[
+                          if (durationStr.isNotEmpty)
                             Text(durationStr, style: theme.textTheme.bodySmall),
-                            const SizedBox(width: 6),
+                          if (durationStr.isNotEmpty && ep.downloadedBytes > 0)
                             const Text('•', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                            const SizedBox(width: 6),
-                          ],
                           Text(
                             _formatBytes(ep.downloadedBytes),
                             style: theme.textTheme.bodySmall?.copyWith(

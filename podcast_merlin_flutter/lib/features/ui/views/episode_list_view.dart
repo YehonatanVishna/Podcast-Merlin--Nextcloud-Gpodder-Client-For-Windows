@@ -405,53 +405,75 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
             },
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _EpisodeFilterChip(
-                        key: const ValueKey('filter_all'),
-                        label: 'All',
-                        selected: activeFilter == EpisodeFilter.all,
-                        onSelected: (_) => _selectFilter(EpisodeFilter.all),
-                      ),
-                      _EpisodeFilterChip(
-                        key: const ValueKey('filter_unplayed'),
-                        label: 'Unplayed',
-                        selected: activeFilter == EpisodeFilter.unplayed,
-                        onSelected: (_) => _selectFilter(EpisodeFilter.unplayed),
-                      ),
-                      _EpisodeFilterChip(
-                        key: const ValueKey('filter_in_progress'),
-                        label: 'In Progress',
-                        selected: activeFilter == EpisodeFilter.inProgress,
-                        onSelected: (_) => _selectFilter(EpisodeFilter.inProgress),
-                      ),
-                      _EpisodeFilterChip(
-                        key: const ValueKey('filter_starred'),
-                        label: 'Starred',
-                        selected: activeFilter == EpisodeFilter.starred,
-                        onSelected: (_) => _selectFilter(EpisodeFilter.starred),
-                      ),
-                      _EpisodeFilterChip(
-                        key: const ValueKey('filter_downloaded'),
-                        label: 'Downloaded',
-                        selected: activeFilter == EpisodeFilter.downloaded,
-                        onSelected: (_) => _selectFilter(EpisodeFilter.downloaded),
-                      ),
-                    ],
-                  ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 600;
+
+              final chipsRow = SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _EpisodeFilterChip(
+                      key: const ValueKey('filter_all'),
+                      label: 'All',
+                      selected: activeFilter == EpisodeFilter.all,
+                      onSelected: (_) => _selectFilter(EpisodeFilter.all),
+                    ),
+                    _EpisodeFilterChip(
+                      key: const ValueKey('filter_unplayed'),
+                      label: 'Unplayed',
+                      selected: activeFilter == EpisodeFilter.unplayed,
+                      onSelected: (_) => _selectFilter(EpisodeFilter.unplayed),
+                    ),
+                    _EpisodeFilterChip(
+                      key: const ValueKey('filter_in_progress'),
+                      label: 'In Progress',
+                      selected: activeFilter == EpisodeFilter.inProgress,
+                      onSelected: (_) => _selectFilter(EpisodeFilter.inProgress),
+                    ),
+                    _EpisodeFilterChip(
+                      key: const ValueKey('filter_starred'),
+                      label: 'Starred',
+                      selected: activeFilter == EpisodeFilter.starred,
+                      onSelected: (_) => _selectFilter(EpisodeFilter.starred),
+                    ),
+                    _EpisodeFilterChip(
+                      key: const ValueKey('filter_downloaded'),
+                      label: 'Downloaded',
+                      selected: activeFilter == EpisodeFilter.downloaded,
+                      onSelected: (_) => _selectFilter(EpisodeFilter.downloaded),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
+              );
+
+              final countWidget = Text(
                 'Showing $displayedCount of $totalCount episodes',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-            ],
+              );
+
+              if (isNarrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    chipsRow,
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4.0),
+                      child: countWidget,
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: chipsRow),
+                  const SizedBox(width: 8),
+                  countWidget,
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -702,12 +724,15 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
   }
 
   Widget _buildPodcastHeader(BuildContext context, Podcast podcast, int loadedCount) {
+    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    final imageSize = isCompact ? 64.0 : 80.0;
+
     return Card(
-      margin: const EdgeInsets.all(12),
+      margin: EdgeInsets.all(isCompact ? 8 : 12),
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: EdgeInsets.all(isCompact ? 12.0 : 16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -716,17 +741,19 @@ class _EpisodeListViewState extends ConsumerState<EpisodeListView> {
               children: [
                 AppCachedImage(
                   imageUrl: podcast.imageUrl,
-                  width: 80,
-                  height: 80,
+                  width: imageSize,
+                  height: imageSize,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         podcast.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -1252,7 +1279,10 @@ class _EpisodeTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 4),
-              Row(
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 4,
+                runSpacing: 2,
                 children: [
                   if (isFinished) ...[
                     Icon(
@@ -1260,7 +1290,6 @@ class _EpisodeTile extends StatelessWidget {
                       size: 14,
                       color: Theme.of(context).colorScheme.outline,
                     ),
-                    const SizedBox(width: 4),
                     Text(
                       'Played • ',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1278,7 +1307,6 @@ class _EpisodeTile extends StatelessWidget {
                         ),
                   ),
                   if ((displayPosition > 0 || isCurrent) && displayDuration > 0 && !isFinished) ...[
-                    const SizedBox(width: 8),
                     Text(
                       '• ${_formatDuration(displayPosition)} / ${_formatDuration(displayDuration)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1287,13 +1315,15 @@ class _EpisodeTile extends StatelessWidget {
                           ),
                     ),
                   ] else if (displayDuration > 0) ...[
-                    const SizedBox(width: 8),
                     Text(
                       '• ${_formatDuration(displayDuration)}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: isFinished ? Theme.of(context).disabledColor : null,
                           ),
                     ),
+                  ],
+                  if (episode.isStarred) ...[
+                    const Icon(Icons.star, size: 13, color: Colors.amber),
                   ],
                 ],
               ),
@@ -1309,36 +1339,11 @@ class _EpisodeTile extends StatelessWidget {
           ),
           trailing: isSelectionMode
               ? null
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildDownloadButton(context),
-                    IconButton(
-                      icon: Icon(
-                        episode.isStarred ? Icons.star : Icons.star_border,
-                        color: episode.isStarred ? Colors.amber : null,
-                      ),
-                      tooltip: episode.isStarred ? 'Unstar episode' : 'Star episode',
-                      onPressed: onToggleStar,
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        isCurrent
-                            ? Icons.volume_up
-                            : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
-                        size: 32,
-                        color: isCurrent
-                            ? Theme.of(context).colorScheme.primary
-                            : (isFinished
-                                ? Theme.of(context).colorScheme.outline
-                                : Theme.of(context).colorScheme.primary),
-                      ),
-                      tooltip: isCurrent
-                          ? 'Now playing'
-                          : (isFinished ? 'Replay episode' : 'Play episode'),
-                      onPressed: onPlay,
-                    ),
-                    PopupMenuButton<String>(
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = MediaQuery.sizeOf(context).width < 600;
+
+                    final moreMenu = PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert),
                       tooltip: 'More options',
                       onSelected: (value) {
@@ -1431,8 +1436,58 @@ class _EpisodeTile extends StatelessWidget {
                           ),
                         ),
                       ],
-                    ),
-                  ],
+                    );
+
+                    final playButton = IconButton(
+                      icon: Icon(
+                        isCurrent
+                            ? Icons.volume_up
+                            : (isFinished ? Icons.replay_rounded : Icons.play_arrow_rounded),
+                        size: isCompact ? 28 : 32,
+                        color: isCurrent
+                            ? Theme.of(context).colorScheme.primary
+                            : (isFinished
+                                ? Theme.of(context).colorScheme.outline
+                                : Theme.of(context).colorScheme.primary),
+                      ),
+                      tooltip: isCurrent
+                          ? 'Now playing'
+                          : (isFinished ? 'Replay episode' : 'Play episode'),
+                      onPressed: onPlay,
+                    );
+
+                    if (isCompact) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (episode.isDownloaded ||
+                              episode.isDownloading ||
+                              episode.isPaused ||
+                              episode.downloadStatus == DownloadStatus.failed)
+                            _buildDownloadButton(context),
+                          playButton,
+                          moreMenu,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildDownloadButton(context),
+                        IconButton(
+                          icon: Icon(
+                            episode.isStarred ? Icons.star : Icons.star_border,
+                            color: episode.isStarred ? Colors.amber : null,
+                          ),
+                          tooltip: episode.isStarred ? 'Unstar episode' : 'Star episode',
+                          onPressed: onToggleStar,
+                        ),
+                        playButton,
+                        moreMenu,
+                      ],
+                    );
+                  },
                 ),
           onTap: isSelectionMode ? () => onSelectChanged?.call(!isSelected) : onTap,
           onLongPress: onLongPress,

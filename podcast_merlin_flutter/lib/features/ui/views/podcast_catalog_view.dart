@@ -20,14 +20,20 @@ class PodcastCatalogView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             SvgPicture.asset(
               'assets/images/logo.svg',
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
             ),
-            const SizedBox(width: 12),
-            const Text('Podcast Merlin'),
+            const SizedBox(width: 10),
+            const Flexible(
+              child: Text(
+                'Podcast Merlin',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
@@ -176,17 +182,37 @@ class PodcastCatalogView extends ConsumerWidget {
 
                 return LayoutBuilder(
                   builder: (context, constraints) {
-                    final crossAxisCount = constraints.maxWidth > 900
-                        ? 5
-                        : (constraints.maxWidth > 600 ? 3 : 2);
+                    final width = constraints.maxWidth;
+                    final int crossAxisCount;
+                    final double childAspectRatio;
+
+                    if (width < 340) {
+                      crossAxisCount = 1;
+                      childAspectRatio = 2.2;
+                    } else if (width < 600) {
+                      crossAxisCount = 2;
+                      childAspectRatio = 0.72;
+                    } else if (width < 900) {
+                      crossAxisCount = 3;
+                      childAspectRatio = 0.75;
+                    } else if (width < 1200) {
+                      crossAxisCount = 4;
+                      childAspectRatio = 0.75;
+                    } else {
+                      crossAxisCount = 5;
+                      childAspectRatio = 0.75;
+                    }
+
+                    final padding = width < 600 ? 12.0 : 16.0;
+                    final spacing = width < 600 ? 12.0 : 16.0;
 
                     return GridView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.all(padding),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossAxisCount,
-                        childAspectRatio: 0.75,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
+                        childAspectRatio: childAspectRatio,
+                        crossAxisSpacing: spacing,
+                        mainAxisSpacing: spacing,
                       ),
                       itemCount: podcasts.length,
                       itemBuilder: (context, index) {
@@ -224,19 +250,20 @@ class PodcastCatalogView extends ConsumerWidget {
 
             return AlertDialog(
               title: const Text('Subscribe to Podcast Feed'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: controller,
-                    enabled: !isSubscribing,
-                    decoration: const InputDecoration(
-                      hintText: 'https://example.com/podcast.xml',
-                      labelText: 'RSS Feed URL',
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: controller,
+                      enabled: !isSubscribing,
+                      decoration: const InputDecoration(
+                        hintText: 'https://example.com/podcast.xml',
+                        labelText: 'RSS Feed URL',
+                      ),
+                      autofocus: true,
                     ),
-                    autofocus: true,
-                  ),
                   if (isSubscribing) ...[
                     const SizedBox(height: 16),
                     Row(
@@ -258,7 +285,8 @@ class PodcastCatalogView extends ConsumerWidget {
                   ],
                 ],
               ),
-              actions: [
+            ),
+            actions: [
                 TextButton(
                   onPressed: isSubscribing ? null : () => Navigator.pop(dialogCtx),
                   child: const Text('Cancel'),

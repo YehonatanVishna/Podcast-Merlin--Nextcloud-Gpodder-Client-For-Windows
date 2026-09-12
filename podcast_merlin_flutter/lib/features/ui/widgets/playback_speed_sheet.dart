@@ -31,111 +31,118 @@ class PlaybackSpeedSheet extends ConsumerWidget {
         final currentSpeed = snapshot.data?.speed ?? audioHandler.speed;
         final clampedSpeed = currentSpeed.clamp(0.5, 3.0);
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Header with Speed badge
-              Row(
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(
-                    Icons.speed,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 24,
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(height: 16),
+                  // Header with Speed badge
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.speed,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Playback Speed',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${clampedSpeed.toStringAsFixed(1)}x',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Fine-grained Slider (0.5x to 3.0x with 0.1x steps)
+                  Row(
+                    children: [
+                      const Text('0.5x', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 4,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                          ),
+                          child: Slider(
+                            value: clampedSpeed,
+                            min: 0.5,
+                            max: 3.0,
+                            divisions: 25,
+                            label: '${clampedSpeed.toStringAsFixed(1)}x',
+                            onChanged: (val) {
+                              final rounded = (val * 10).roundToDouble() / 10;
+                              audioHandler.setSpeed(rounded);
+                            },
+                          ),
+                        ),
+                      ),
+                      const Text('3.0x', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Quick Presets
                   Text(
-                    'Playback Speed',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    'QUICK PRESETS',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                           fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
                         ),
                   ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${clampedSpeed.toStringAsFixed(1)}x',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Fine-grained Slider (0.5x to 3.0x with 0.1x steps)
-              Row(
-                children: [
-                  const Text('0.5x', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                      ),
-                      child: Slider(
-                        value: clampedSpeed,
-                        min: 0.5,
-                        max: 3.0,
-                        divisions: 25,
-                        label: '${clampedSpeed.toStringAsFixed(1)}x',
-                        onChanged: (val) {
-                          final rounded = (val * 10).roundToDouble() / 10;
-                          audioHandler.setSpeed(rounded);
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: presets.map((preset) {
+                      final isSelected = (clampedSpeed - preset).abs() < 0.05;
+                      return ChoiceChip(
+                        label: Text('${preset.toStringAsFixed(1)}x'),
+                        selected: isSelected,
+                        onSelected: (_) {
+                          audioHandler.setSpeed(preset);
                         },
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   ),
-                  const Text('3.0x', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 16),
                 ],
               ),
-              const SizedBox(height: 16),
-              // Quick Presets
-              Text(
-                'QUICK PRESETS',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: presets.map((preset) {
-                  final isSelected = (clampedSpeed - preset).abs() < 0.05;
-                  return ChoiceChip(
-                    label: Text('${preset.toStringAsFixed(1)}x'),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      audioHandler.setSpeed(preset);
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
         );
       },

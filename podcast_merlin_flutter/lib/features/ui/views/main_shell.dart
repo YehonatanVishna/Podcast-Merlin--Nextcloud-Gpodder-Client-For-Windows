@@ -2,14 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'podcast_catalog_view.dart';
-import 'episode_list_view.dart';
-import 'podcast_discovery_view.dart';
-import 'download_center_view.dart';
-import 'settings_view.dart';
-import '../widgets/player_dock.dart';
 import '../../../core/models/podcast.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/utils/responsive.dart';
+import '../widgets/player_dock.dart';
+import 'download_center_view.dart';
+import 'episode_list_view.dart';
+import 'podcast_catalog_view.dart';
+import 'podcast_discovery_view.dart';
+import 'settings_view.dart';
 
 class ShellNavigationState {
   final int selectedIndex;
@@ -119,11 +120,21 @@ class MainShellState extends ConsumerState<MainShell> {
     return false;
   }
 
+  void _onDestinationSelected(int index) {
+    if (index == 2 || index == 4) {
+      ref.invalidate(downloadStorageUsageBytesProvider);
+      ref.invalidate(downloadedEpisodesCountProvider);
+      ref.invalidate(downloadedEpisodesListProvider);
+      ref.invalidate(failedEpisodesListProvider);
+    }
+    navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= 768;
+        final isDesktop = constraints.maxWidth >= ResponsiveBreakpoints.desktopNavRail;
         final activeCountAsync = ref.watch(activeDownloadsCountProvider);
         final activeCount = activeCountAsync.valueOrNull ?? 0;
 
@@ -142,126 +153,127 @@ class MainShellState extends ConsumerState<MainShell> {
           const SettingsView(),
         ];
 
-        return Scaffold(
-          body: Row(
-            children: [
-              if (isDesktop)
-                NavigationRail(
-                  leading: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: SvgPicture.asset(
-                      'assets/images/logo.svg',
-                      width: 40,
-                      height: 40,
-                    ),
-                  ),
-                  selectedIndex: selectedIndex,
-                  onDestinationSelected: (index) {
-                    if (index == 2 || index == 4) {
-                      ref.invalidate(downloadStorageUsageBytesProvider);
-                      ref.invalidate(downloadedEpisodesCountProvider);
-                      ref.invalidate(downloadedEpisodesListProvider);
-                      ref.invalidate(failedEpisodesListProvider);
-                    }
-                    navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
-                  },
-                  labelType: NavigationRailLabelType.selected,
-                  destinations: [
-                    const NavigationRailDestination(
-                      icon: Icon(Icons.podcasts_outlined),
-                      selectedIcon: Icon(Icons.podcasts),
-                      label: Text('Catalog'),
-                    ),
-                    const NavigationRailDestination(
-                      icon: Icon(Icons.playlist_play_outlined),
-                      selectedIcon: Icon(Icons.playlist_play),
-                      label: Text('Episodes'),
-                    ),
-                    NavigationRailDestination(
-                      icon: activeCount > 0
-                          ? Badge.count(
-                              count: activeCount,
-                              child: const Icon(Icons.download_outlined),
-                            )
-                          : const Icon(Icons.download_outlined),
-                      selectedIcon: activeCount > 0
-                          ? Badge.count(
-                              count: activeCount,
-                              child: const Icon(Icons.download),
-                            )
-                          : const Icon(Icons.download),
-                      label: const Text('Downloads'),
-                    ),
-                    const NavigationRailDestination(
-                      icon: Icon(Icons.explore_outlined),
-                      selectedIcon: Icon(Icons.explore),
-                      label: Text('Discover'),
-                    ),
-                    const NavigationRailDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings),
-                      label: Text('Settings'),
-                    ),
-                  ],
-                ),
-              if (isDesktop) const VerticalDivider(thickness: 1, width: 1),
-              Expanded(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: IndexedStack(
-                        index: selectedIndex,
-                        children: pages,
+        return PopScope(
+          canPop: _historyIndex == 0,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) {
+              goBack();
+            }
+          },
+          child: Scaffold(
+            body: Row(
+              children: [
+                if (isDesktop)
+                  NavigationRail(
+                    leading: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: SvgPicture.asset(
+                        'assets/images/logo.svg',
+                        width: 40,
+                        height: 40,
                       ),
                     ),
-                    const PlayerDock(),
-                  ],
+                    selectedIndex: selectedIndex,
+                    onDestinationSelected: _onDestinationSelected,
+                    labelType: NavigationRailLabelType.selected,
+                    destinations: [
+                      const NavigationRailDestination(
+                        icon: Icon(Icons.podcasts_outlined),
+                        selectedIcon: Icon(Icons.podcasts),
+                        label: Text('Catalog'),
+                      ),
+                      const NavigationRailDestination(
+                        icon: Icon(Icons.playlist_play_outlined),
+                        selectedIcon: Icon(Icons.playlist_play),
+                        label: Text('Episodes'),
+                      ),
+                      NavigationRailDestination(
+                        icon: activeCount > 0
+                            ? Badge.count(
+                                count: activeCount,
+                                child: const Icon(Icons.download_outlined),
+                              )
+                            : const Icon(Icons.download_outlined),
+                        selectedIcon: activeCount > 0
+                            ? Badge.count(
+                                count: activeCount,
+                                child: const Icon(Icons.download),
+                              )
+                            : const Icon(Icons.download),
+                        label: const Text('Downloads'),
+                      ),
+                      const NavigationRailDestination(
+                        icon: Icon(Icons.explore_outlined),
+                        selectedIcon: Icon(Icons.explore),
+                        label: Text('Discover'),
+                      ),
+                      const NavigationRailDestination(
+                        icon: Icon(Icons.settings_outlined),
+                        selectedIcon: Icon(Icons.settings),
+                        label: Text('Settings'),
+                      ),
+                    ],
+                  ),
+                if (isDesktop) const VerticalDivider(thickness: 1, width: 1),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: IndexedStack(
+                          index: selectedIndex,
+                          children: pages,
+                        ),
+                      ),
+                      const PlayerDock(),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            bottomNavigationBar: !isDesktop
+                ? NavigationBar(
+                    selectedIndex: selectedIndex,
+                    onDestinationSelected: _onDestinationSelected,
+                    destinations: [
+                      const NavigationDestination(
+                        icon: Icon(Icons.podcasts_outlined),
+                        selectedIcon: Icon(Icons.podcasts),
+                        label: 'Catalog',
+                      ),
+                      const NavigationDestination(
+                        icon: Icon(Icons.playlist_play_outlined),
+                        selectedIcon: Icon(Icons.playlist_play),
+                        label: 'Episodes',
+                      ),
+                      NavigationDestination(
+                        icon: activeCount > 0
+                            ? Badge.count(
+                                count: activeCount,
+                                child: const Icon(Icons.download_outlined),
+                              )
+                            : const Icon(Icons.download_outlined),
+                        selectedIcon: activeCount > 0
+                            ? Badge.count(
+                                count: activeCount,
+                                child: const Icon(Icons.download),
+                              )
+                            : const Icon(Icons.download),
+                        label: 'Downloads',
+                      ),
+                      const NavigationDestination(
+                        icon: Icon(Icons.explore_outlined),
+                        selectedIcon: Icon(Icons.explore),
+                        label: 'Discover',
+                      ),
+                      const NavigationDestination(
+                        icon: Icon(Icons.settings_outlined),
+                        selectedIcon: Icon(Icons.settings),
+                        label: 'Settings',
+                      ),
+                    ],
+                  )
+                : null,
           ),
-          bottomNavigationBar: !isDesktop
-              ? BottomNavigationBar(
-                  currentIndex: selectedIndex,
-                  type: BottomNavigationBarType.fixed,
-                  onTap: (index) {
-                    if (index == 2 || index == 4) {
-                      ref.invalidate(downloadStorageUsageBytesProvider);
-                      ref.invalidate(downloadedEpisodesCountProvider);
-                      ref.invalidate(downloadedEpisodesListProvider);
-                      ref.invalidate(failedEpisodesListProvider);
-                    }
-                    navigateTo(index, podcast: index == 1 ? selectedPodcast : null);
-                  },
-                  items: [
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.podcasts),
-                      label: 'Catalog',
-                    ),
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.playlist_play),
-                      label: 'Episodes',
-                    ),
-                    BottomNavigationBarItem(
-                      icon: activeCount > 0
-                          ? Badge.count(
-                              count: activeCount,
-                              child: const Icon(Icons.download),
-                            )
-                          : const Icon(Icons.download),
-                      label: 'Downloads',
-                    ),
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.explore),
-                      label: 'Discover',
-                    ),
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.settings),
-                      label: 'Settings',
-                    ),
-                  ],
-                )
-              : null,
         );
       },
     );

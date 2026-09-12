@@ -47,51 +47,57 @@ class QueueBottomSheet extends ConsumerWidget {
           builder: (context, snapshot) {
             final queue = snapshot.data ?? audioHandler.currentQueue;
 
-            return Column(
-              children: [
-                // Top drag handle
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
+            return SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  // Top drag handle
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                // Header Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.queue_music, size: 24),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Up Next Queue',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const Spacer(),
-                      if (queue.isNotEmpty)
-                        TextButton.icon(
-                          icon: const Icon(Icons.clear_all, size: 18),
-                          label: const Text('Clear Queue'),
-                          onPressed: () {
-                            audioHandler.clearQueue();
-                          },
+                  // Header Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.queue_music, size: 24),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Up Next Queue',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                    ],
+                        if (queue.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          TextButton.icon(
+                            icon: const Icon(Icons.clear_all, size: 18),
+                            label: const Text('Clear Queue'),
+                            onPressed: () {
+                              audioHandler.clearQueue();
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                // Sheet Body
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: [
-                      // Now Playing Section
+                  const Divider(height: 1),
+                  // Sheet Body
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.only(top: 8, bottom: 20),
+                      children: [
+                        // Now Playing Section
                       if (currentEpisode != null) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -255,10 +261,11 @@ class QueueBottomSheet extends ConsumerWidget {
                   ),
                 ),
               ],
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+          );
+        },
+      );
+    },
+  );
+}
 }

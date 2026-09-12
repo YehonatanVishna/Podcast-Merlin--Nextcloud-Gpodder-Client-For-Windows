@@ -339,56 +339,71 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _rewindSeconds,
-                        decoration: const InputDecoration(
-                          labelText: 'Rewind Interval',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.replay),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 5, child: Text('5 seconds')),
-                          DropdownMenuItem(value: 10, child: Text('10 seconds')),
-                          DropdownMenuItem(value: 15, child: Text('15 seconds')),
-                          DropdownMenuItem(value: 30, child: Text('30 seconds')),
-                          DropdownMenuItem(value: 45, child: Text('45 seconds')),
-                          DropdownMenuItem(value: 60, child: Text('60 seconds')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _rewindSeconds = val);
-                          }
-                        },
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 500;
+                    final rewindDropdown = DropdownButtonFormField<int>(
+                      initialValue: _rewindSeconds,
+                      decoration: const InputDecoration(
+                        labelText: 'Rewind Interval',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.replay),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _fastForwardSeconds,
-                        decoration: const InputDecoration(
-                          labelText: 'Fast Forward Interval',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.forward),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 5, child: Text('5 seconds')),
-                          DropdownMenuItem(value: 10, child: Text('10 seconds')),
-                          DropdownMenuItem(value: 15, child: Text('15 seconds')),
-                          DropdownMenuItem(value: 30, child: Text('30 seconds')),
-                          DropdownMenuItem(value: 45, child: Text('45 seconds')),
-                          DropdownMenuItem(value: 60, child: Text('60 seconds')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _fastForwardSeconds = val);
-                          }
-                        },
+                      items: const [
+                        DropdownMenuItem(value: 5, child: Text('5 seconds')),
+                        DropdownMenuItem(value: 10, child: Text('10 seconds')),
+                        DropdownMenuItem(value: 15, child: Text('15 seconds')),
+                        DropdownMenuItem(value: 30, child: Text('30 seconds')),
+                        DropdownMenuItem(value: 45, child: Text('45 seconds')),
+                        DropdownMenuItem(value: 60, child: Text('60 seconds')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _rewindSeconds = val);
+                        }
+                      },
+                    );
+
+                    final fastForwardDropdown = DropdownButtonFormField<int>(
+                      initialValue: _fastForwardSeconds,
+                      decoration: const InputDecoration(
+                        labelText: 'Fast Forward Interval',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.forward),
                       ),
-                    ),
-                  ],
+                      items: const [
+                        DropdownMenuItem(value: 5, child: Text('5 seconds')),
+                        DropdownMenuItem(value: 10, child: Text('10 seconds')),
+                        DropdownMenuItem(value: 15, child: Text('15 seconds')),
+                        DropdownMenuItem(value: 30, child: Text('30 seconds')),
+                        DropdownMenuItem(value: 45, child: Text('45 seconds')),
+                        DropdownMenuItem(value: 60, child: Text('60 seconds')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _fastForwardSeconds = val);
+                        }
+                      },
+                    );
+
+                    if (isNarrow) {
+                      return Column(
+                        children: [
+                          rewindDropdown,
+                          const SizedBox(height: 16),
+                          fastForwardDropdown,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(child: rewindDropdown),
+                        const SizedBox(width: 16),
+                        Expanded(child: fastForwardDropdown),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
@@ -409,24 +424,39 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.file_upload_outlined),
-                        label: const Text('Export OPML'),
-                        onPressed: _exportOpml,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.file_download_outlined),
-                        label: const Text('Import OPML'),
-                        onPressed: _showImportOpmlDialog,
-                      ),
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 500;
+                    final exportBtn = OutlinedButton.icon(
+                      icon: const Icon(Icons.file_upload_outlined),
+                      label: const Text('Export OPML'),
+                      onPressed: _exportOpml,
+                    );
+                    final importBtn = ElevatedButton.icon(
+                      icon: const Icon(Icons.file_download_outlined),
+                      label: const Text('Import OPML'),
+                      onPressed: _showImportOpmlDialog,
+                    );
+
+                    if (isNarrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          exportBtn,
+                          const SizedBox(height: 12),
+                          importBtn,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(child: exportBtn),
+                        const SizedBox(width: 16),
+                        Expanded(child: importBtn),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 const Divider(),
@@ -454,75 +484,95 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final storageAsync = ref.watch(downloadStorageUsageBytesProvider);
     final countAsync = ref.watch(downloadedEpisodesCountProvider);
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).dividerColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 500;
+
+        return Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.folder_outlined, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Offline Storage Used',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    const Icon(Icons.folder_outlined, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Offline Storage Used',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          storageAsync.when(
+                            data: (bytes) {
+                              final count = countAsync.valueOrNull ?? 0;
+                              return Text(
+                                '${_formatBytes(bytes)} across $count downloaded ${count == 1 ? 'episode' : 'episodes'}',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                              );
+                            },
+                            loading: () => const Text('Calculating...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                            error: (err, st) => const Text('Storage calculation error', style: TextStyle(fontSize: 12, color: Colors.red)),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      storageAsync.when(
-                        data: (bytes) {
-                          final count = countAsync.valueOrNull ?? 0;
-                          return Text(
-                            '${_formatBytes(bytes)} across $count downloaded ${count == 1 ? 'episode' : 'episodes'}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                          );
-                        },
-                        loading: () => const Text('Calculating...', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        error: (err, st) => const Text('Storage calculation error', style: TextStyle(fontSize: 12, color: Colors.red)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      tooltip: 'Refresh storage info',
+                      onPressed: () {
+                        ref.invalidate(downloadStorageUsageBytesProvider);
+                        ref.invalidate(downloadedEpisodesCountProvider);
+                      },
+                    ),
+                    if (!isNarrow) ...[
+                      const SizedBox(width: 4),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                        icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red, size: 18),
+                        label: const Text('Clear All'),
+                        onPressed: () => _showClearAllDownloadsDialog(context),
                       ),
                     ],
+                  ],
+                ),
+                if (isNarrow) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                      icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red, size: 18),
+                      label: const Text('Clear All Downloads'),
+                      onPressed: () => _showClearAllDownloadsDialog(context),
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh, size: 20),
-                  tooltip: 'Refresh storage info',
-                  onPressed: () {
-                    ref.invalidate(downloadStorageUsageBytesProvider);
-                    ref.invalidate(downloadedEpisodesCountProvider);
-                  },
-                ),
-                const SizedBox(width: 4),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                  icon: const Icon(Icons.delete_sweep_outlined, color: Colors.red, size: 18),
-                  label: const Text('Clear All'),
-                  onPressed: () => _showClearAllDownloadsDialog(context),
+                ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    label: const Text('Open Download Center'),
+                    onPressed: () {
+                      PodcastMerlinApp.mainShellKey.currentState?.navigateTo(2);
+                    },
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.tonalIcon(
-                icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('Open Download Center'),
-                onPressed: () {
-                  PodcastMerlinApp.mainShellKey.currentState?.navigateTo(2);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

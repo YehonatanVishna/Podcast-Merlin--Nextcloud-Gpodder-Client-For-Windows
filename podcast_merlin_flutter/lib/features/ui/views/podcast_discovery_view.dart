@@ -196,47 +196,75 @@ class _PodcastDiscoveryViewState extends ConsumerState<PodcastDiscoveryView> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: 'Search podcasts (e.g. Technology, News, Science)...',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _searchController.clear();
-                                ref.read(discoveryNotifierProvider.notifier).loadTrending();
-                              },
-                            )
-                          : null,
-                      border: const OutlineInputBorder(),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 540;
+                final searchField = TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: isNarrow
+                        ? 'Search podcasts...'
+                        : 'Search podcasts (e.g. Technology, News, Science)...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              ref.read(discoveryNotifierProvider.notifier).loadTrending();
+                            },
+                          )
+                        : null,
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                ),
-                if (searchService.availableProviders.length > 1) ...[
-                  const SizedBox(width: 12),
-                  DropdownButton<String>(
-                    value: discoveryState.activeProviderId,
-                    onChanged: (newId) {
-                      if (newId != null) {
-                        ref.read(discoveryNotifierProvider.notifier).setActiveProvider(newId);
-                      }
-                    },
-                    items: searchService.availableProviders.map((p) {
-                      return DropdownMenuItem<String>(
-                        value: p.id,
-                        child: Text(p.displayName),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ],
+                );
+
+                final providerDropdown = (searchService.availableProviders.length > 1)
+                    ? DropdownButton<String>(
+                        value: discoveryState.activeProviderId,
+                        onChanged: (newId) {
+                          if (newId != null) {
+                            ref.read(discoveryNotifierProvider.notifier).setActiveProvider(newId);
+                          }
+                        },
+                        items: searchService.availableProviders.map((p) {
+                          return DropdownMenuItem<String>(
+                            value: p.id,
+                            child: Text(p.displayName),
+                          );
+                        }).toList(),
+                      )
+                    : null;
+
+                if (isNarrow && providerDropdown != null) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      searchField,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text('Source: ', style: Theme.of(context).textTheme.bodySmall),
+                          const SizedBox(width: 8),
+                          providerDropdown,
+                        ],
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: searchField),
+                    if (providerDropdown != null) ...[
+                      const SizedBox(width: 12),
+                      providerDropdown,
+                    ],
+                  ],
+                );
+              },
             ),
           ),
           Padding(
